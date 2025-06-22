@@ -13,12 +13,17 @@ RUN \
     nginx
 
 # Copy data for add-on
-COPY run.sh /
 COPY app/ /app/
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Make run script executable
-RUN chmod a+x /run.sh
+# Create s6-overlay service directory
+RUN mkdir -p /etc/services.d/printer-dashboard
+
+# Copy s6-overlay service script
+COPY run.sh /etc/services.d/printer-dashboard/run
+
+# Make service script executable
+RUN chmod a+x /etc/services.d/printer-dashboard/run
 
 # Build arguments
 ARG BUILD_ARCH
@@ -49,4 +54,4 @@ LABEL \
     org.opencontainers.image.revision=${BUILD_REF} \
     org.opencontainers.image.version=${BUILD_VERSION}
 
-CMD [ "/run.sh" ] 
+# s6-overlay will automatically start services in /etc/services.d/ 
