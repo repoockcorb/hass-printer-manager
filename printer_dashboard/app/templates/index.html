@@ -3,109 +3,67 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Printer Dashboard - Home Assistant Addon</title>
-    <link rel="stylesheet" href="static/styles.css?v=1.0.3">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖨️</text></svg>">
+    <title>Printer Dashboard</title>
+    <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
-    <div class="container">
-        <header>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
             <h1>🖨️ Printer Dashboard</h1>
             <div class="header-controls">
-                {% if user_info %}
-                <span class="user-info">Welcome, {{ user_info.name }}!</span>
-                {% endif %}
-                <button id="addPrinterBtn" class="add-btn">+ Add Printer</button>
+                <button id="refreshBtn" class="btn btn-secondary" title="Refresh All (Ctrl+R)">
+                    <span class="icon">🔄</span>
+                    Refresh
+                </button>
             </div>
         </header>
 
-        <div class="tab-container">
-            <div class="tab-nav" id="tabNav">
-                <!-- Tabs will be dynamically added here -->
-            </div>
-            
-            <div class="tab-content" id="tabContent">
-                <!-- Tab content will be dynamically added here -->
-            </div>
-        </div>
-
-        <div class="welcome-screen" id="welcomeScreen">
+        <div id="welcomeScreen" class="welcome-screen">
             <div class="welcome-content">
-                <h2>Welcome to your Printer Dashboard!</h2>
-                <p>Configure your printers in the add-on configuration tab to get started.</p>
-                <div class="config-instructions">
-                    <h3>📋 How to add printers:</h3>
-                    <ol>
-                        <li>Go to <strong>Settings → Add-ons → Printer Dashboard</strong></li>
-                        <li>Click the <strong>Configuration</strong> tab</li>
-                        <li>Add your printers with their IP addresses</li>
-                        <li>Restart the add-on to see your printers here</li>
-                    </ol>
+                <h2>Welcome to Printer Dashboard!</h2>
+                <p>Get started by configuring your printers in Home Assistant:</p>
+                <ol class="setup-steps">
+                    <li>Go to <strong>Settings</strong> → <strong>Add-ons</strong></li>
+                    <li>Find <strong>Printer Dashboard</strong> in your installed add-ons</li>
+                    <li>Click on it and go to the <strong>Configuration</strong> tab</li>
+                    <li>Add your printers in the following format:</li>
+                </ol>
+                <div class="config-example">
+                    <pre><code>printers:
+  - name: "Voron Klicky"
+    type: "mainsail"
+    url: "http://192.168.1.104"
+  - name: "Prusa MK3"
+    type: "octoprint"
+    url: "http://192.168.1.247"</code></pre>
                 </div>
-                <div class="feature-list">
-                    <div class="feature">
-                        <span class="feature-icon">🖥️</span>
-                        <span>Multiple printer interfaces in one place</span>
-                    </div>
-                    <div class="feature">
-                        <span class="feature-icon">⚡</span>
-                        <span>Quick tab switching</span>
-                    </div>
-                    <div class="feature">
-                        <span class="feature-icon">🏠</span>
-                        <span>Integrated with Home Assistant authentication</span>
-                    </div>
-                    <div class="feature">
-                        <span class="feature-icon">⚙️</span>
-                        <span>Configuration managed through Home Assistant</span>
-                    </div>
+                <p><strong>Save</strong> the configuration and restart the add-on. Your printers will appear here!</p>
+                <div class="welcome-actions">
+                    <button id="checkConfigBtn" class="btn btn-primary">Check Configuration</button>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- Add Printer Modal -->
-    <div id="addPrinterModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Add New Printer</h3>
-                <span class="close" id="closeModal">&times;</span>
-            </div>
-            <div class="modal-body">
-                <form id="addPrinterForm">
-                    <div class="form-group">
-                        <label for="printerName">Printer Name:</label>
-                        <input type="text" id="printerName" name="printerName" required placeholder="e.g., Ender 3, Prusa MK3">
-                    </div>
-                    <div class="form-group">
-                        <label for="printerType">Printer Type:</label>
-                        <select id="printerType" name="printerType" required>
-                            <option value="">Select Type</option>
-                            <option value="mainsail">Mainsail</option>
-                            <option value="octoprint">OctoPrint</option>
-                            <option value="custom">Custom URL</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="printerUrl">Printer URL:</label>
-                        <input type="url" id="printerUrl" name="printerUrl" required placeholder="http://192.168.1.100 or http://printer.local">
-                        <small class="help-text">Enter the full URL where your printer interface is accessible</small>
-                    </div>
-                    <div class="form-actions">
-                        <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
-                        <button type="submit" class="btn-primary">Add Printer</button>
-                    </div>
-                </form>
-            </div>
+        <div id="mainDashboard" class="dashboard-main" style="display: none;">
+            <nav class="tab-nav">
+                <div class="tab-list" id="tabList">
+                    <!-- Tabs will be dynamically added here -->
+                </div>
+            </nav>
+
+            <main class="tab-content">
+                <div id="tabPanes">
+                    <!-- Tab panes will be dynamically added here -->
+                </div>
+            </main>
+        </div>
+
+        <div id="notification" class="notification" style="display: none;">
+            <span class="notification-message"></span>
+            <button class="notification-close">&times;</button>
         </div>
     </div>
 
-    <!-- Loading overlay -->
-    <div id="loadingOverlay" class="loading-overlay">
-        <div class="loading-spinner"></div>
-        <div class="loading-text">Loading...</div>
-    </div>
-
-    <script src="static/script.js?v=1.0.3"></script>
+    <script src="static/script.js"></script>
 </body>
 </html> 

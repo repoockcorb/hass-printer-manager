@@ -3,230 +3,94 @@
 import os
 import json
 import logging
-from flask import Flask, render_template, request, jsonify, redirect, session, url_for
+from flask import Flask, render_template, jsonify, request
 import requests
-from functools import wraps
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'printer-dashboard-secret-key')
-
-# Home Assistant configuration
-SUPERVISOR_TOKEN = os.environ.get('SUPERVISOR_TOKEN')
-HASSIO_TOKEN = os.environ.get('HASSIO_TOKEN')
-HOME_ASSISTANT_URL = os.environ.get('HOME_ASSISTANT_URL', 'http://supervisor/core')
-
-class HomeAssistantAuth:
-    """Handle Home Assistant authentication"""
-    
-    def __init__(self):
-        self.session = requests.Session()
-        if SUPERVISOR_TOKEN:
-            self.session.headers.update({
-                'Authorization': f'Bearer {SUPERVISOR_TOKEN}',
-                'Content-Type': 'application/json'
-            })
-
-    def validate_token(self, token):
-        """Validate Home Assistant access token"""
-        try:
-            headers = {'Authorization': f'Bearer {token}'}
-            response = requests.get(f'{HOME_ASSISTANT_URL}/api/', headers=headers, timeout=5)
-            return response.status_code == 200
-        except Exception as e:
-            logger.error(f"Token validation error: {e}")
-            return False
-
-    def get_user_info(self, token):
-        """Get user information from Home Assistant"""
-        try:
-            headers = {'Authorization': f'Bearer {token}'}
-            response = requests.get(f'{HOME_ASSISTANT_URL}/api/auth/user', headers=headers, timeout=5)
-            if response.status_code == 200:
-                return response.json()
-            return None
-        except Exception as e:
-            logger.error(f"User info error: {e}")
-            return None
 
 class PrinterStorage:
-    """Handle printer data from Home Assistant configuration"""
-    
     def __init__(self):
-        self.options_path = '/data/options.json'
-
-    def load_printers(self):
-        """Load printers from Home Assistant configuration"""
+        self.config_file = '/data/options.json'
+        logger.info(f"PrinterStorage initialized with config file: {self.config_file}")
+    
+    def get_printers(self):
+        """Load printers from Home Assistant add-on configuration"""
         try:
-            logger.info(f"Attempting to load printers from {self.options_path}")
-            if os.path.exists(self.options_path):
-                logger.info(f"Options file exists: {self.options_path}")
-                with open(self.options_path, 'r') as f:
-                    options = json.load(f)
-                    logger.info(f"Loaded options: {options}")
-                    printers = options.get('printers', [])
-                    logger.info(f"Found {len(printers)} printers in configuration")
-                    
-                    # Add IDs to printers if they don't have them
-                    for i, printer in enumerate(printers):
-                        if 'id' not in printer:
-                            printer['id'] = str(i + 1)
-                    
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    printers = config.get('printers', [])
+                    logger.info(f"Loaded {len(printers)} printers from config")
+                    for printer in printers:
+                        logger.debug(f"Printer: {printer}")
                     return printers
             else:
-                logger.warning(f"Options file does not exist: {self.options_path}")
-            return []
+                logger.warning(f"Config file {self.config_file} does not exist")
+                return []
         except Exception as e:
-            logger.error(f"Error loading printers from configuration: {e}")
+            logger.error(f"Error loading printers: {e}")
             return []
 
-    def save_printers(self, printers):
-        """Printers are managed through Home Assistant configuration - read-only"""
-        logger.warning("Printers are configured through Home Assistant add-on configuration")
-        return False
-
-# Initialize components
-ha_auth = HomeAssistantAuth()
-printer_storage = PrinterStorage()
-
-def require_auth(f):
-    """Decorator to require authentication"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        # Check if running in Home Assistant ingress mode
-        if 'X-Ingress-Path' in request.headers:
-            # In ingress mode, authentication is handled by Home Assistant
-            return f(*args, **kwargs)
-        
-        # Check for access token
-        token = request.headers.get('Authorization', '').replace('Bearer ', '')
-        if not token:
-            token = request.args.get('access_token')
-        
-        if not token or not ha_auth.validate_token(token):
-            return jsonify({'error': 'Authentication required'}), 401
-        
-        return f(*args, **kwargs)
-    return decorated_function
+# Initialize storage
+storage = PrinterStorage()
 
 @app.route('/')
-@require_auth
 def index():
     """Main dashboard page"""
-    user_info = None
-    token = request.headers.get('Authorization', '').replace('Bearer ', '')
-    if token:
-        user_info = ha_auth.get_user_info(token)
-    
-    return render_template('index.html', user_info=user_info)
+    logger.info("Serving main dashboard page")
+    return render_template('index.html')
 
-@app.route('/api/printers', methods=['GET'])
-@require_auth
+@app.route('/api/printers')
 def get_printers():
-    """Get all printers"""
-    logger.info("API call to /api/printers received")
-    printers = printer_storage.load_printers()
-    logger.info(f"Loaded {len(printers)} printers from configuration")
-    for i, printer in enumerate(printers):
-        logger.info(f"Printer {i+1}: {printer.get('name', 'Unknown')} - {printer.get('url', 'No URL')}")
-    return jsonify(printers)
+    """API endpoint to get all printers"""
+    try:
+        printers = storage.get_printers()
+        logger.info(f"API: Returning {len(printers)} printers")
+        
+        # Convert URLs to proxy paths for remote access
+        processed_printers = []
+        for printer in printers:
+            processed_printer = printer.copy()
+            
+            # Convert HTTP URLs to proxy paths
+            if printer.get('url', '').startswith('http'):
+                # Create slug from printer name
+                slug = printer['name'].lower().replace(' ', '_')
+                processed_printer['url'] = f"/proxy/{slug}/"
+                logger.debug(f"Converted {printer['url']} to {processed_printer['url']}")
+            
+            processed_printers.append(processed_printer)
+        
+        return jsonify(processed_printers)
+    except Exception as e:
+        logger.error(f"Error in get_printers API: {e}")
+        return jsonify([]), 500
 
 @app.route('/api/printers', methods=['POST'])
-@require_auth
 def add_printer():
-    """Add printer endpoint - disabled (use configuration tab)"""
+    """API endpoint to add a printer - disabled for config-based management"""
     return jsonify({
-        'error': 'Adding printers is disabled. Please configure printers in the add-on configuration tab.',
-        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to add printers.'
+        'success': False, 
+        'message': 'Adding printers via web interface is disabled. Please use the Configuration tab in Home Assistant to manage printers.'
     }), 400
 
-@app.route('/api/printers/<printer_id>', methods=['DELETE'])
-@require_auth
-def delete_printer(printer_id):
-    """Delete printer endpoint - disabled (use configuration tab)"""
+@app.route('/api/printers/<int:index>', methods=['DELETE'])
+def delete_printer(index):
+    """API endpoint to delete a printer - disabled for config-based management"""
     return jsonify({
-        'error': 'Deleting printers is disabled. Please configure printers in the add-on configuration tab.',
-        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to manage printers.'
-    }), 400
-
-@app.route('/api/printers/<printer_id>', methods=['PUT'])
-@require_auth
-def update_printer(printer_id):
-    """Update printer endpoint - disabled (use configuration tab)"""
-    return jsonify({
-        'error': 'Updating printers is disabled. Please configure printers in the add-on configuration tab.',
-        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to manage printers.'
+        'success': False, 
+        'message': 'Removing printers via web interface is disabled. Please use the Configuration tab in Home Assistant to manage printers.'
     }), 400
 
 @app.route('/api/health')
 def health_check():
     """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'version': '1.0.0'})
-
-@app.route('/api/debug')
-@require_auth  
-def debug_info():
-    """Debug endpoint to show current configuration"""
-    printers = printer_storage.load_printers()
-    debug_data = {
-        'printers_count': len(printers),
-        'printers': printers,
-        'proxy_paths': []
-    }
-    
-    # Generate expected proxy paths
-    for printer in printers:
-        if printer.get('url', '').startswith('http'):
-            slug = printer['name'].replace(' ', '_').lower()
-            debug_data['proxy_paths'].append({
-                'name': printer['name'],
-                'original_url': printer['url'],
-                'slug': slug,
-                'proxy_path': f'/proxy/{slug}/',
-                'upstream_name': f'{slug}_up'
-            })
-    
-    return jsonify(debug_data)
-
-@app.route('/test-proxy')
-@require_auth
-def test_proxy():
-    """Test page to verify proxy functionality"""
-    printers = printer_storage.load_printers()
-    proxy_links = []
-    
-    for printer in printers:
-        if printer.get('url', '').startswith('http'):
-            slug = printer['name'].replace(' ', '_').lower()
-            proxy_links.append({
-                'name': printer['name'],
-                'original_url': printer['url'],
-                'proxy_path': f'/proxy/{slug}/',
-                'test_link': f'<a href="/proxy/{slug}/" target="_blank">Test {printer["name"]} Proxy</a>'
-            })
-    
-    html = '<h1>Proxy Test Page</h1>'
-    html += '<p>Click the links below to test if the proxy paths work:</p><ul>'
-    for link in proxy_links:
-        html += f'<li>{link["test_link"]} (Original: <a href="{link["original_url"]}" target="_blank">{link["original_url"]}</a>)</li>'
-    html += '</ul>'
-    html += '<p><a href="/">Back to Dashboard</a></p>'
-    
-    return html
-
-@app.errorhandler(404)
-def not_found(error):
-    # Log the 404 for debugging
-    logger.warning(f"404 Not Found: {request.method} {request.url} - Path: {request.path}")
-    return jsonify({'error': 'Not found', 'path': request.path, 'method': request.method}), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
+    return jsonify({'status': 'healthy', 'printers_count': len(storage.get_printers())})
 
 if __name__ == '__main__':
-    logger.info("Starting Printer Dashboard Flask App...")
-    app.run(host='0.0.0.0', port=5000, debug=False) 
+    logger.info("Starting Printer Dashboard Flask app...")
+    app.run(host='127.0.0.1', port=5001, debug=True) 

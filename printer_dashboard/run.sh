@@ -91,17 +91,12 @@ location /proxy/${NAME}/ {
     proxy_redirect     http://\$host/ /proxy/${NAME}/;
     proxy_redirect     https://\$host/ /proxy/${NAME}/;
     
-    # Comprehensive content rewriting for HTML
+    # Very selective content rewriting - only for HTML content
+    sub_filter '<link rel="stylesheet" href="/' '<link rel="stylesheet" href="/proxy/${NAME}/';
+    sub_filter '<script src="/' '<script src="/proxy/${NAME}/';
+    sub_filter '<img src="/' '<img src="/proxy/${NAME}/';
     sub_filter 'href="/' 'href="/proxy/${NAME}/';
     sub_filter 'src="/' 'src="/proxy/${NAME}/';
-    sub_filter 'url("/' 'url("/proxy/${NAME}/';
-    sub_filter 'url(/' 'url(/proxy/${NAME}/';
-    sub_filter "href='/" "href='/proxy/${NAME}/";
-    sub_filter "src='/" "src='/proxy/${NAME}/";
-    sub_filter 'action="/' 'action="/proxy/${NAME}/';
-    sub_filter 'from"/' 'from"/proxy/${NAME}/';
-    sub_filter '"/' '"/proxy/${NAME}/';
-    sub_filter "'/" "'/proxy/${NAME}/";
     sub_filter_once off;
     sub_filter_types text/html;
 }

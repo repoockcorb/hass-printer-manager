@@ -1,57 +1,30 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
+FROM alpine:3.18
 
-# Set shell
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
-# Install requirements for add-on
-RUN \
-  apk add --no-cache \
-    bash \
-    curl \
-    jq \
+# Install required packages
+RUN apk add --no-cache \
     python3 \
+    py3-pip \
     py3-flask \
     py3-requests \
     nginx \
-    ca-certificates \
-    tzdata
+    curl \
+    jq \
+    bash
 
-# Copy data for add-on
-COPY run.sh /
+# Create app directory
+RUN mkdir -p /app
+
+# Copy application files
 COPY app/ /app/
 COPY nginx.conf /etc/nginx/nginx.conf
-
-# Make run script executable
+COPY run.sh /
 RUN chmod a+x /run.sh
 
-# Build arguments
-ARG BUILD_ARCH
-ARG BUILD_DATE
-ARG BUILD_DESCRIPTION
-ARG BUILD_NAME
-ARG BUILD_REF
-ARG BUILD_REPOSITORY
-ARG BUILD_VERSION
+# Create nginx directories
+RUN mkdir -p /var/log/nginx /var/lib/nginx/tmp /etc/nginx/conf.d
 
-# Labels
-LABEL \
-    io.hass.name="${BUILD_NAME}" \
-    io.hass.description="${BUILD_DESCRIPTION}" \
-    io.hass.arch="${BUILD_ARCH}" \
-    io.hass.type="addon" \
-    io.hass.version=${BUILD_VERSION} \
-    maintainer="Your Name <your.email@example.com>" \
-    org.opencontainers.image.title="${BUILD_NAME}" \
-    org.opencontainers.image.description="${BUILD_DESCRIPTION}" \
-    org.opencontainers.image.vendor="Home Assistant Community Add-ons" \
-    org.opencontainers.image.authors="Your Name <your.email@example.com>" \
-    org.opencontainers.image.licenses="MIT" \
-    org.opencontainers.image.url="https://addons.community" \
-    org.opencontainers.image.source="https://github.com/repoockcorb/hass-printer-manager" \
-    org.opencontainers.image.documentation="https://github.com/repoockcorb/hass-printer-manager/blob/main/README.md" \
-    org.opencontainers.image.created=${BUILD_DATE} \
-    org.opencontainers.image.revision=${BUILD_REF} \
-    org.opencontainers.image.version=${BUILD_VERSION}
+# Expose port
+EXPOSE 5000
 
-CMD [ "/run.sh" ]
+# Run the service
+CMD ["/run.sh"] 
