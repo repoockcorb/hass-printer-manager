@@ -61,10 +61,14 @@ class PrinterStorage:
     def load_printers(self):
         """Load printers from Home Assistant configuration"""
         try:
+            logger.info(f"Attempting to load printers from {self.options_path}")
             if os.path.exists(self.options_path):
+                logger.info(f"Options file exists: {self.options_path}")
                 with open(self.options_path, 'r') as f:
                     options = json.load(f)
+                    logger.info(f"Loaded options: {options}")
                     printers = options.get('printers', [])
+                    logger.info(f"Found {len(printers)} printers in configuration")
                     
                     # Add IDs to printers if they don't have them
                     for i, printer in enumerate(printers):
@@ -72,6 +76,8 @@ class PrinterStorage:
                             printer['id'] = str(i + 1)
                     
                     return printers
+            else:
+                logger.warning(f"Options file does not exist: {self.options_path}")
             return []
         except Exception as e:
             logger.error(f"Error loading printers from configuration: {e}")
@@ -121,7 +127,11 @@ def index():
 @require_auth
 def get_printers():
     """Get all printers"""
+    logger.info("API call to /api/printers received")
     printers = printer_storage.load_printers()
+    logger.info(f"Loaded {len(printers)} printers from configuration")
+    for i, printer in enumerate(printers):
+        logger.info(f"Printer {i+1}: {printer.get('name', 'Unknown')} - {printer.get('url', 'No URL')}")
     return jsonify(printers)
 
 @app.route('/api/printers', methods=['POST'])
