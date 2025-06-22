@@ -434,5 +434,5 @@ def health_check():
     })
 
 if __name__ == '__main__':
-    logger.info("Starting Printer Dashboard Flask app...")
-    app.run(host='127.0.0.1', port=5001, debug=True) 
+    logger.info("Starting Print Farm Dashboard Flask app...")
+    app.run(host='127.0.0.1', port=5001, debug=False) 
