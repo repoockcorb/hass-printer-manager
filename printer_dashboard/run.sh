@@ -85,7 +85,7 @@ location /proxy/${NAME}/ {
     proxy_redirect     http://\$host/ /proxy/${NAME}/;
     proxy_redirect     https://\$host/ /proxy/${NAME}/;
     
-    # Content rewriting to fix absolute paths - only for HTML content
+    # Comprehensive content rewriting for HTML
     sub_filter 'href="/' 'href="/proxy/${NAME}/';
     sub_filter 'src="/' 'src="/proxy/${NAME}/';
     sub_filter 'url("/' 'url("/proxy/${NAME}/';
@@ -93,6 +93,9 @@ location /proxy/${NAME}/ {
     sub_filter "href='/" "href='/proxy/${NAME}/";
     sub_filter "src='/" "src='/proxy/${NAME}/";
     sub_filter 'action="/' 'action="/proxy/${NAME}/';
+    sub_filter 'from"/' 'from"/proxy/${NAME}/';
+    sub_filter '"/' '"/proxy/${NAME}/';
+    sub_filter "'/" "'/proxy/${NAME}/";
     sub_filter_once off;
     sub_filter_types text/html;
 }
@@ -106,6 +109,55 @@ fi
 echo "[INFO] Generated dynamic printer proxy config:"
 cat "$NGINX_UPSTREAMS"
 cat "$NGINX_LOCATIONS"
+
+# Add fallback rules for absolute path requests after all printer-specific rules
+echo "# Fallback rules for absolute path requests" >> "$NGINX_LOCATIONS"
+if [ -f "$PRINTERS_JSON" ]; then
+    PRINTER_COUNT=$(jq '.printers | length' "$PRINTERS_JSON" 2>/dev/null || echo 0)
+    if [ "$PRINTER_COUNT" -gt 0 ]; then
+        # Get the first printer as default fallback
+        FIRST_PRINTER=$(jq -c '.printers[0]' "$PRINTERS_JSON" | jq -r '.name' | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
+        
+        cat >> "$NGINX_LOCATIONS" <<EOF
+
+# Fallback for assets requested with absolute paths
+# Route based on referrer header to determine which printer
+location ~ ^/(assets|static|css|js|fonts|img|api|printer|websocket|machine|server|access)/(.*) {
+    # Default to first printer, but try to detect from referrer
+    set \$target_printer "${FIRST_PRINTER}";
+    
+    # Check referrer to determine correct printer
+EOF
+
+        # Add referrer-based routing for each printer
+        jq -c '.printers[]' "$PRINTERS_JSON" | while read -r PRN; do
+            NAME=$(echo "$PRN" | jq -r '.name' | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
+            cat >> "$NGINX_LOCATIONS" <<EOF
+    if (\$http_referer ~ "/proxy/${NAME}/") {
+        set \$target_printer "${NAME}";
+    }
+EOF
+        done
+        
+        cat >> "$NGINX_LOCATIONS" <<EOF
+    
+    # Proxy to the determined printer
+    proxy_pass http://\${target_printer}_up/\$1/\$2\$is_args\$args;
+    proxy_set_header Host \$http_host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_http_version 1.1;
+    proxy_buffering off;
+    
+    # Add CORS headers for assets
+    add_header Access-Control-Allow-Origin *;
+    add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
+    add_header Access-Control-Allow-Headers "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range";
+}
+EOF
+    fi
+fi
 
 # Test connectivity to printer interfaces
 echo "[INFO] Testing connectivity to printer interfaces..."
