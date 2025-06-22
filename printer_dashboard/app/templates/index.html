@@ -3,67 +3,213 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Printer Dashboard</title>
-    <link rel="stylesheet" href="static/styles.css">
+    <title>Print Farm Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="dashboard-container">
-        <header class="dashboard-header">
-            <h1>🖨️ Printer Dashboard</h1>
-            <div class="header-controls">
-                <button id="refreshBtn" class="btn btn-secondary" title="Refresh All (Ctrl+R)">
-                    <span class="icon">🔄</span>
-                    Refresh
-                </button>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="header-left">
+                    <h1 class="app-title">
+                        <i class="fas fa-cubes"></i>
+                        Print Farm Dashboard
+                    </h1>
+                    <div class="status-summary">
+                        <span class="summary-item">
+                            <span class="summary-count" id="total-printers">0</span>
+                            <span class="summary-label">Total</span>
+                        </span>
+                        <span class="summary-item">
+                            <span class="summary-count printing" id="printing-count">0</span>
+                            <span class="summary-label">Printing</span>
+                        </span>
+                        <span class="summary-item">
+                            <span class="summary-count idle" id="idle-count">0</span>
+                            <span class="summary-label">Idle</span>
+                        </span>
+                        <span class="summary-item">
+                            <span class="summary-count offline" id="offline-count">0</span>
+                            <span class="summary-label">Offline</span>
+                        </span>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <div class="filter-controls">
+                        <select id="status-filter" class="filter-select">
+                            <option value="all">All Statuses</option>
+                            <option value="printing">Printing</option>
+                            <option value="idle">Idle</option>
+                            <option value="paused">Paused</option>
+                            <option value="offline">Offline</option>
+                        </select>
+                        <select id="type-filter" class="filter-select">
+                            <option value="all">All Types</option>
+                            <option value="klipper">Klipper</option>
+                            <option value="octoprint">OctoPrint</option>
+                        </select>
+                    </div>
+                    <button id="refresh-btn" class="btn btn-primary">
+                        <i class="fas fa-sync-alt"></i>
+                        Refresh
+                    </button>
+                </div>
             </div>
         </header>
 
-        <div id="welcomeScreen" class="welcome-screen">
-            <div class="welcome-content">
-                <h2>Welcome to Printer Dashboard!</h2>
-                <p>Get started by configuring your printers in Home Assistant:</p>
-                <ol class="setup-steps">
-                    <li>Go to <strong>Settings</strong> → <strong>Add-ons</strong></li>
-                    <li>Find <strong>Printer Dashboard</strong> in your installed add-ons</li>
-                    <li>Click on it and go to the <strong>Configuration</strong> tab</li>
-                    <li>Add your printers in the following format:</li>
-                </ol>
-                <div class="config-example">
-                    <pre><code>printers:
-  - name: "Voron Klicky"
-    type: "mainsail"
-    url: "http://192.168.1.104"
-  - name: "Prusa MK3"
-    type: "octoprint"
-    url: "http://192.168.1.247"</code></pre>
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="printers-grid" id="printers-grid">
+                <!-- Printer cards will be dynamically generated here -->
+            </div>
+            
+            <!-- Loading State -->
+            <div id="loading-state" class="loading-state">
+                <div class="spinner"></div>
+                <p>Loading printers...</p>
+            </div>
+            
+            <!-- Empty State -->
+            <div id="empty-state" class="empty-state" style="display: none;">
+                <i class="fas fa-printer"></i>
+                <h3>No Printers Configured</h3>
+                <p>Add printers to your configuration to see them here.</p>
+            </div>
+            
+            <!-- Error State -->
+            <div id="error-state" class="error-state" style="display: none;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h3>Unable to Load Printers</h3>
+                <p id="error-message">Please check your configuration and try again.</p>
+            </div>
+        </main>
+    </div>
+
+    <!-- Printer Card Template -->
+    <template id="printer-card-template">
+        <div class="printer-card" data-printer-name="">
+            <div class="card-header">
+                <div class="printer-info">
+                    <h3 class="printer-name"></h3>
+                    <span class="printer-type"></span>
                 </div>
-                <p><strong>Save</strong> the configuration and restart the add-on. Your printers will appear here!</p>
-                <div class="welcome-actions">
-                    <button id="checkConfigBtn" class="btn btn-primary">Check Configuration</button>
+                <div class="printer-status">
+                    <span class="status-indicator"></span>
+                    <span class="status-text"></span>
+                </div>
+            </div>
+            
+            <div class="card-body">
+                <!-- Progress Section -->
+                <div class="progress-section">
+                    <div class="print-info">
+                        <div class="file-name"></div>
+                        <div class="print-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill"></div>
+                            </div>
+                            <span class="progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Temperature Section -->
+                <div class="temp-section">
+                    <div class="temp-group">
+                        <div class="temp-item">
+                            <i class="fas fa-thermometer-half extruder-icon"></i>
+                            <span class="temp-label">Extruder</span>
+                            <span class="temp-values">
+                                <span class="temp-actual">0°</span>
+                                <span class="temp-separator">/</span>
+                                <span class="temp-target">0°</span>
+                            </span>
+                        </div>
+                        <div class="temp-item">
+                            <i class="fas fa-bed bed-icon"></i>
+                            <span class="temp-label">Bed</span>
+                            <span class="temp-values">
+                                <span class="temp-actual">0°</span>
+                                <span class="temp-separator">/</span>
+                                <span class="temp-target">0°</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Time Section -->
+                <div class="time-section">
+                    <div class="time-item">
+                        <i class="fas fa-clock"></i>
+                        <span class="time-label">Print Time</span>
+                        <span class="time-value print-time">00:00:00</span>
+                    </div>
+                    <div class="time-item">
+                        <i class="fas fa-hourglass-half"></i>
+                        <span class="time-label">Remaining</span>
+                        <span class="time-value remaining-time">00:00:00</span>
+                    </div>
+                </div>
+                
+                <!-- Position Section -->
+                <div class="position-section">
+                    <div class="position-item">
+                        <span class="axis">X</span>
+                        <span class="pos-value x-pos">0.00</span>
+                    </div>
+                    <div class="position-item">
+                        <span class="axis">Y</span>
+                        <span class="pos-value y-pos">0.00</span>
+                    </div>
+                    <div class="position-item">
+                        <span class="axis">Z</span>
+                        <span class="pos-value z-pos">0.00</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-footer">
+                <div class="control-buttons">
+                    <button class="btn btn-control pause-btn" data-action="pause">
+                        <i class="fas fa-pause"></i>
+                        Pause
+                    </button>
+                    <button class="btn btn-control resume-btn" data-action="resume" style="display: none;">
+                        <i class="fas fa-play"></i>
+                        Resume
+                    </button>
+                    <button class="btn btn-control btn-danger cancel-btn" data-action="cancel">
+                        <i class="fas fa-stop"></i>
+                        Cancel
+                    </button>
+                </div>
+                <div class="last-update">
+                    Updated: <span class="update-time">Never</span>
                 </div>
             </div>
         </div>
+    </template>
 
-        <div id="mainDashboard" class="dashboard-main" style="display: none;">
-            <nav class="tab-nav">
-                <div class="tab-list" id="tabList">
-                    <!-- Tabs will be dynamically added here -->
-                </div>
-            </nav>
-
-            <main class="tab-content">
-                <div id="tabPanes">
-                    <!-- Tab panes will be dynamically added here -->
-                </div>
-            </main>
-        </div>
-
-        <div id="notification" class="notification" style="display: none;">
-            <span class="notification-message"></span>
-            <button class="notification-close">&times;</button>
+    <!-- Control Confirmation Modal -->
+    <div id="confirm-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Confirm Action</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="modal-message">Are you sure you want to perform this action?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="modal-confirm" class="btn btn-primary">Confirm</button>
+            </div>
         </div>
     </div>
 
-    <script src="static/script.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html> 

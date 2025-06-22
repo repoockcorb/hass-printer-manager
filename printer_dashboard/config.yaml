@@ -1,6 +1,6 @@
-name: "Printer Dashboard"
-description: "Multi-printer dashboard for Mainsail, OctoPrint, and custom interfaces"
-version: "1.2.0"
+name: "Print Farm Dashboard"
+description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
+version: "2.0.0"
 slug: "printer_dashboard"
 init: false
 arch:
@@ -14,7 +14,7 @@ boot: auto
 ingress: true
 ingress_port: 5000
 panel_icon: mdi:printer-3d-nozzle
-panel_title: "Printer Dashboard"
+panel_title: "Print Farm Dashboard"
 hassio_api: true
 homeassistant_api: true
 auth_api: true
@@ -23,5 +23,6 @@ options:
 schema:
   printers:
     - name: str
-      type: str
-      url: str 
+      type: "list(klipper|octoprint)"
+      url: url
+      api_key: "str?" 
