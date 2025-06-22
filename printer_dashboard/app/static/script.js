@@ -152,6 +152,7 @@ class PrinterDashboard {
                 const slug = printer.name.replace(/ /g, '_').toLowerCase();
                 iframeSrc = `proxy/${slug}/`;
                 console.log(`Converting ${printer.name} URL from ${printer.url} to proxy path: ${iframeSrc}`);
+                console.log(`Full iframe src will be: ${window.location.origin}${window.location.pathname}${iframeSrc}`);
             }
             iframe.src = iframeSrc;
             iframe.title = printer.name;
@@ -176,6 +177,7 @@ class PrinterDashboard {
                     <div style="text-align: center; color: #ef4444;">
                         <h3>Failed to load ${printer.name}</h3>
                         <p>Please check the URL: <a href="${printer.url}" target="_blank">${printer.url}</a></p>
+                        <p>Proxy path: <code>${iframeSrc}</code></p>
                         <button onclick="location.reload()" style="margin-top: 10px; padding: 8px 16px; background: #4c51bf; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button>
                     </div>
                 `;

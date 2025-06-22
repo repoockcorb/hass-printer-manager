@@ -181,6 +181,32 @@ def debug_info():
     
     return jsonify(debug_data)
 
+@app.route('/test-proxy')
+@require_auth
+def test_proxy():
+    """Test page to verify proxy functionality"""
+    printers = printer_storage.load_printers()
+    proxy_links = []
+    
+    for printer in printers:
+        if printer.get('url', '').startswith('http'):
+            slug = printer['name'].replace(' ', '_').lower()
+            proxy_links.append({
+                'name': printer['name'],
+                'original_url': printer['url'],
+                'proxy_path': f'/proxy/{slug}/',
+                'test_link': f'<a href="/proxy/{slug}/" target="_blank">Test {printer["name"]} Proxy</a>'
+            })
+    
+    html = '<h1>Proxy Test Page</h1>'
+    html += '<p>Click the links below to test if the proxy paths work:</p><ul>'
+    for link in proxy_links:
+        html += f'<li>{link["test_link"]} (Original: <a href="{link["original_url"]}" target="_blank">{link["original_url"]}</a>)</li>'
+    html += '</ul>'
+    html += '<p><a href="/">Back to Dashboard</a></p>'
+    
+    return html
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Not found'}), 404
