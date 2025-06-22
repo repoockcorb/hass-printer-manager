@@ -15,7 +15,7 @@ import time
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 class PrinterAPI:
     """Base class for printer API interactions"""
@@ -431,6 +431,23 @@ def health_check():
         'status': 'healthy', 
         'printers_count': len(printer_manager.printers),
         'last_update': max(printer_manager.last_update.values()).isoformat() if printer_manager.last_update else None
+    })
+
+@app.route('/debug/static')
+def debug_static():
+    """Debug endpoint to check static file configuration"""
+    import os
+    static_path = app.static_folder
+    static_files = []
+    if os.path.exists(static_path):
+        static_files = os.listdir(static_path)
+    
+    return jsonify({
+        'static_folder': app.static_folder,
+        'static_url_path': app.static_url_path,
+        'static_files': static_files,
+        'working_directory': os.getcwd(),
+        'static_path_exists': os.path.exists(static_path)
     })
 
 if __name__ == '__main__':
