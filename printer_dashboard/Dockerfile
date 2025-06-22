@@ -8,7 +8,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN \
   apk add --no-cache \
     python3 \
-    py3-pip \
     py3-flask \
     py3-requests \
     nginx
@@ -17,11 +16,6 @@ RUN \
 COPY run.sh /
 COPY app/ /app/
 COPY nginx.conf /etc/nginx/nginx.conf
-
-# Install Python dependencies
-RUN pip3 install --no-cache-dir \
-    flask \
-    requests
 
 # Make run script executable
 RUN chmod a+x /run.sh
