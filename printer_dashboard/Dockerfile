@@ -21,8 +21,7 @@ COPY nginx.conf /etc/nginx/nginx.conf
 # Install Python dependencies
 RUN pip3 install --no-cache-dir \
     flask \
-    requests \
-    pyhomeassistant
+    requests
 
 # Make run script executable
 RUN chmod a+x /run.sh
@@ -50,8 +49,8 @@ LABEL \
     org.opencontainers.image.authors="Your Name <your.email@example.com>" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.url="https://addons.community" \
-    org.opencontainers.image.source="https://github.com/yourusername/printer-dashboard-addon" \
-    org.opencontainers.image.documentation="https://github.com/yourusername/printer-dashboard-addon/blob/main/README.md" \
+    org.opencontainers.image.source="https://github.com/repoockcorb/hass-printer-manager" \
+    org.opencontainers.image.documentation="https://github.com/repoockcorb/hass-printer-manager/blob/main/README.md" \
     org.opencontainers.image.created=${BUILD_DATE} \
     org.opencontainers.image.revision=${BUILD_REF} \
     org.opencontainers.image.version=${BUILD_VERSION}
