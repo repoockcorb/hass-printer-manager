@@ -85,7 +85,7 @@ location /proxy/${NAME}/ {
     proxy_redirect     http://\$host/ /proxy/${NAME}/;
     proxy_redirect     https://\$host/ /proxy/${NAME}/;
     
-    # Content rewriting to fix absolute paths
+    # Content rewriting to fix absolute paths - only for HTML content
     sub_filter 'href="/' 'href="/proxy/${NAME}/';
     sub_filter 'src="/' 'src="/proxy/${NAME}/';
     sub_filter 'url("/' 'url("/proxy/${NAME}/';
@@ -93,24 +93,8 @@ location /proxy/${NAME}/ {
     sub_filter "href='/" "href='/proxy/${NAME}/";
     sub_filter "src='/" "src='/proxy/${NAME}/";
     sub_filter 'action="/' 'action="/proxy/${NAME}/';
-    sub_filter '"/' '"/proxy/${NAME}/';
     sub_filter_once off;
-    sub_filter_types text/html text/css text/javascript application/javascript application/json;
-}
-
-# Handle static assets that might be requested with absolute paths
-location ~ ^/(static|css|js|fonts|img|assets|webcam)/(.*) {
-    # Try to determine which printer this request is for based on referrer
-    # This is a fallback for assets requested with absolute paths
-    
-    # Default to first printer if we can't determine the source
-    proxy_pass http://${NAME}_up/\$1/\$2;
-    proxy_set_header Host \$http_host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-    proxy_http_version 1.1;
-    proxy_buffering off;
+    sub_filter_types text/html;
 }
 
 EOF
