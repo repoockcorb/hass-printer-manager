@@ -1,5 +1,5 @@
 name: "Printer Dashboard"
-version: "1.0.8"
+version: "1.0.9"
 slug: "printer_dashboard"
 description: "A comprehensive printer management dashboard for Mainsail, OctoPrint, and other 3D printer interfaces"
 url: "https://github.com/repoockcorb/printer-dashboard-addon"
