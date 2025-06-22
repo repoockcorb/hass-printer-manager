@@ -38,7 +38,7 @@ schema:
   keyfile: str
   printers:
     - name: str
-      type: str(mainsail|octoprint|custom)
+      type: str
       url: url
 build_from:
   armhf: "alpine:3.18"
