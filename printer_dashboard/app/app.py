@@ -53,40 +53,32 @@ class HomeAssistantAuth:
             return None
 
 class PrinterStorage:
-    """Handle printer data from Home Assistant configuration"""
+    """Handle printer data storage using Home Assistant storage"""
     
     def __init__(self):
-        self.options_path = '/data/options.json'
+        self.storage_path = '/data/printers.json'
 
     def load_printers(self):
-        """Load printers from Home Assistant configuration"""
+        """Load printers from storage"""
         try:
-            logger.info(f"Attempting to load printers from {self.options_path}")
-            if os.path.exists(self.options_path):
-                logger.info(f"Options file exists: {self.options_path}")
-                with open(self.options_path, 'r') as f:
-                    options = json.load(f)
-                    logger.info(f"Loaded options: {options}")
-                    printers = options.get('printers', [])
-                    logger.info(f"Found {len(printers)} printers in configuration")
-                    
-                    # Add IDs to printers if they don't have them
-                    for i, printer in enumerate(printers):
-                        if 'id' not in printer:
-                            printer['id'] = str(i + 1)
-                    
-                    return printers
-            else:
-                logger.warning(f"Options file does not exist: {self.options_path}")
+            if os.path.exists(self.storage_path):
+                with open(self.storage_path, 'r') as f:
+                    return json.load(f)
             return []
         except Exception as e:
-            logger.error(f"Error loading printers from configuration: {e}")
+            logger.error(f"Error loading printers: {e}")
             return []
 
     def save_printers(self, printers):
-        """Printers are managed through Home Assistant configuration - read-only"""
-        logger.warning("Printers are configured through Home Assistant add-on configuration")
-        return False
+        """Save printers to storage"""
+        try:
+            os.makedirs('/data', exist_ok=True)
+            with open(self.storage_path, 'w') as f:
+                json.dump(printers, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving printers: {e}")
+            return False
 
 # Initialize components
 ha_auth = HomeAssistantAuth()
@@ -127,101 +119,97 @@ def index():
 @require_auth
 def get_printers():
     """Get all printers"""
-    logger.info("API call to /api/printers received")
     printers = printer_storage.load_printers()
-    logger.info(f"Loaded {len(printers)} printers from configuration")
-    for i, printer in enumerate(printers):
-        logger.info(f"Printer {i+1}: {printer.get('name', 'Unknown')} - {printer.get('url', 'No URL')}")
     return jsonify(printers)
 
 @app.route('/api/printers', methods=['POST'])
 @require_auth
 def add_printer():
-    """Add printer endpoint - disabled (use configuration tab)"""
-    return jsonify({
-        'error': 'Adding printers is disabled. Please configure printers in the add-on configuration tab.',
-        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to add printers.'
-    }), 400
+    """Add a new printer"""
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['name', 'type', 'url']
+        if not all(field in data for field in required_fields):
+            return jsonify({'error': 'Missing required fields'}), 400
+        
+        # Load existing printers
+        printers = printer_storage.load_printers()
+        
+        # Check for duplicate names
+        if any(printer['name'] == data['name'] for printer in printers):
+            return jsonify({'error': 'Printer name already exists'}), 400
+        
+        # Create new printer
+        printer = {
+            'id': str(len(printers) + 1),
+            'name': data['name'],
+            'type': data['type'],
+            'url': data['url'],
+            'created_at': data.get('created_at', '')
+        }
+        
+        printers.append(printer)
+        
+        if printer_storage.save_printers(printers):
+            return jsonify(printer), 201
+        else:
+            return jsonify({'error': 'Failed to save printer'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error adding printer: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/printers/<printer_id>', methods=['DELETE'])
 @require_auth
 def delete_printer(printer_id):
-    """Delete printer endpoint - disabled (use configuration tab)"""
-    return jsonify({
-        'error': 'Deleting printers is disabled. Please configure printers in the add-on configuration tab.',
-        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to manage printers.'
-    }), 400
+    """Delete a printer"""
+    try:
+        printers = printer_storage.load_printers()
+        printers = [p for p in printers if p['id'] != printer_id]
+        
+        if printer_storage.save_printers(printers):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to delete printer'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error deleting printer: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/printers/<printer_id>', methods=['PUT'])
 @require_auth
 def update_printer(printer_id):
-    """Update printer endpoint - disabled (use configuration tab)"""
-    return jsonify({
-        'error': 'Updating printers is disabled. Please configure printers in the add-on configuration tab.',
-        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to manage printers.'
-    }), 400
+    """Update a printer"""
+    try:
+        data = request.get_json()
+        printers = printer_storage.load_printers()
+        
+        for printer in printers:
+            if printer['id'] == printer_id:
+                printer.update(data)
+                break
+        else:
+            return jsonify({'error': 'Printer not found'}), 404
+        
+        if printer_storage.save_printers(printers):
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to update printer'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating printer: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/health')
 def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'version': '1.0.0'})
 
-@app.route('/api/debug')
-@require_auth  
-def debug_info():
-    """Debug endpoint to show current configuration"""
-    printers = printer_storage.load_printers()
-    debug_data = {
-        'printers_count': len(printers),
-        'printers': printers,
-        'proxy_paths': []
-    }
-    
-    # Generate expected proxy paths
-    for printer in printers:
-        if printer.get('url', '').startswith('http'):
-            slug = printer['name'].replace(' ', '_').lower()
-            debug_data['proxy_paths'].append({
-                'name': printer['name'],
-                'original_url': printer['url'],
-                'slug': slug,
-                'proxy_path': f'/proxy/{slug}/',
-                'upstream_name': f'{slug}_up'
-            })
-    
-    return jsonify(debug_data)
-
-@app.route('/test-proxy')
-@require_auth
-def test_proxy():
-    """Test page to verify proxy functionality"""
-    printers = printer_storage.load_printers()
-    proxy_links = []
-    
-    for printer in printers:
-        if printer.get('url', '').startswith('http'):
-            slug = printer['name'].replace(' ', '_').lower()
-            proxy_links.append({
-                'name': printer['name'],
-                'original_url': printer['url'],
-                'proxy_path': f'/proxy/{slug}/',
-                'test_link': f'<a href="/proxy/{slug}/" target="_blank">Test {printer["name"]} Proxy</a>'
-            })
-    
-    html = '<h1>Proxy Test Page</h1>'
-    html += '<p>Click the links below to test if the proxy paths work:</p><ul>'
-    for link in proxy_links:
-        html += f'<li>{link["test_link"]} (Original: <a href="{link["original_url"]}" target="_blank">{link["original_url"]}</a>)</li>'
-    html += '</ul>'
-    html += '<p><a href="/">Back to Dashboard</a></p>'
-    
-    return html
-
 @app.errorhandler(404)
 def not_found(error):
-    # Log the 404 for debugging
-    logger.warning(f"404 Not Found: {request.method} {request.url} - Path: {request.path}")
-    return jsonify({'error': 'Not found', 'path': request.path, 'method': request.method}), 404
+    return jsonify({'error': 'Not found'}), 404
 
 @app.errorhandler(500)
 def internal_error(error):

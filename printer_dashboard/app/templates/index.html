@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Printer Dashboard - Home Assistant Addon</title>
-    <link rel="stylesheet" href="static/styles.css?v=1.0.3">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖨️</text></svg>">
 </head>
 <body>
@@ -32,16 +32,7 @@
         <div class="welcome-screen" id="welcomeScreen">
             <div class="welcome-content">
                 <h2>Welcome to your Printer Dashboard!</h2>
-                <p>Configure your printers in the add-on configuration tab to get started.</p>
-                <div class="config-instructions">
-                    <h3>📋 How to add printers:</h3>
-                    <ol>
-                        <li>Go to <strong>Settings → Add-ons → Printer Dashboard</strong></li>
-                        <li>Click the <strong>Configuration</strong> tab</li>
-                        <li>Add your printers with their IP addresses</li>
-                        <li>Restart the add-on to see your printers here</li>
-                    </ol>
-                </div>
+                <p>Click "Add Printer" to start adding your printer interfaces like Mainsail, OctoPrint, or any other web-based printer management system.</p>
                 <div class="feature-list">
                     <div class="feature">
                         <span class="feature-icon">🖥️</span>
@@ -56,8 +47,8 @@
                         <span>Integrated with Home Assistant authentication</span>
                     </div>
                     <div class="feature">
-                        <span class="feature-icon">⚙️</span>
-                        <span>Configuration managed through Home Assistant</span>
+                        <span class="feature-icon">💾</span>
+                        <span>Data stored in Home Assistant database</span>
                     </div>
                 </div>
             </div>
@@ -106,6 +97,6 @@
         <div class="loading-text">Loading...</div>
     </div>
 
-    <script src="static/script.js?v=1.0.3"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html> 

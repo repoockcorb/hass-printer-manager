@@ -2,7 +2,7 @@ class PrinterDashboard {
     constructor() {
         this.printers = [];
         this.activeTab = localStorage.getItem('activeTab') || null;
-        this.apiBase = 'api';
+        this.apiBase = '/api';
         this.init();
     }
 
@@ -34,10 +34,10 @@ class PrinterDashboard {
             }
         });
 
-        // Add printer form submission - disabled (use configuration tab)
+        // Add printer form submission
         document.getElementById('addPrinterForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            this.showNotification('Printers are configured in the add-on configuration tab. Go to Settings → Add-ons → Printer Dashboard → Configuration to add printers.', 'warning');
+            this.addPrinter();
         });
 
         // Escape key to close modal
@@ -60,10 +60,8 @@ class PrinterDashboard {
     }
 
     async makeApiRequest(endpoint, options = {}) {
-        // ensure no leading slash so we stay inside ingress path
-        if (endpoint.startsWith('/')) endpoint = endpoint.slice(1);
         try {
-            const response = await fetch(`${this.apiBase}/${endpoint}`, {
+            const response = await fetch(`${this.apiBase}${endpoint}`, {
                 headers: {
                     'Content-Type': 'application/json',
                     ...options.headers
@@ -97,7 +95,8 @@ class PrinterDashboard {
     }
 
     showAddPrinterModal() {
-        this.showNotification('Printers are configured in the add-on configuration tab. Go to Settings → Add-ons → Printer Dashboard → Configuration to add printers.', 'warning');
+        document.getElementById('addPrinterModal').style.display = 'block';
+        document.getElementById('printerName').focus();
     }
 
     hideAddPrinterModal() {
@@ -105,7 +104,43 @@ class PrinterDashboard {
         document.getElementById('addPrinterForm').reset();
     }
 
-    // addPrinter() function removed - printers are now configured through Home Assistant configuration tab
+    async addPrinter() {
+        const name = document.getElementById('printerName').value.trim();
+        const type = document.getElementById('printerType').value;
+        const url = document.getElementById('printerUrl').value.trim();
+
+        if (!name || !type || !url) {
+            this.showError('Please fill in all fields');
+            return;
+        }
+
+        try {
+            this.showLoading('Adding printer...');
+            
+            const printer = await this.makeApiRequest('/printers', {
+                method: 'POST',
+                body: JSON.stringify({
+                    name,
+                    type,
+                    url: this.normalizeUrl(url),
+                    created_at: new Date().toISOString()
+                })
+            });
+
+            this.printers.push(printer);
+            this.renderPrinters();
+            this.hideAddPrinterModal();
+            this.updateUI();
+
+            // Auto-select the newly added printer
+            this.switchTab(printer.id);
+            this.showSuccess('Printer added successfully!');
+        } catch (error) {
+            this.showError('Failed to add printer: ' + error.message);
+        } finally {
+            this.hideLoading();
+        }
+    }
 
     normalizeUrl(url) {
         // Ensure URL has protocol
@@ -116,7 +151,39 @@ class PrinterDashboard {
     }
 
     async removePrinter(printerId) {
-        this.showNotification('Printers are configured in the add-on configuration tab. Go to Settings → Add-ons → Printer Dashboard → Configuration to manage printers.', 'warning');
+        const printer = this.printers.find(p => p.id === printerId);
+        if (!printer) return;
+
+        if (confirm(`Are you sure you want to remove "${printer.name}"?`)) {
+            try {
+                this.showLoading('Removing printer...');
+                
+                await this.makeApiRequest(`/printers/${printerId}`, {
+                    method: 'DELETE'
+                });
+
+                this.printers = this.printers.filter(p => p.id !== printerId);
+                
+                // If this was the active tab, switch to another tab or show welcome
+                if (this.activeTab === printerId) {
+                    const remainingPrinters = this.printers;
+                    if (remainingPrinters.length > 0) {
+                        this.switchTab(remainingPrinters[0].id);
+                    } else {
+                        this.activeTab = null;
+                        localStorage.removeItem('activeTab');
+                    }
+                }
+                
+                this.renderPrinters();
+                this.updateUI();
+                this.showSuccess('Printer removed successfully!');
+            } catch (error) {
+                this.showError('Failed to remove printer: ' + error.message);
+            } finally {
+                this.hideLoading();
+            }
+        }
     }
 
     renderPrinters() {
@@ -146,15 +213,7 @@ class PrinterDashboard {
             
             const iframe = document.createElement('iframe');
             iframe.className = 'tab-iframe';
-            // If URL starts with http, build proxy path automatically
-            let iframeSrc = printer.url;
-            if (iframeSrc.startsWith('http')) {
-                const slug = printer.name.replace(/ /g, '_').toLowerCase();
-                iframeSrc = `proxy/${slug}/`;
-                console.log(`Converting ${printer.name} URL from ${printer.url} to proxy path: ${iframeSrc}`);
-                console.log(`Full iframe src will be: ${window.location.origin}${window.location.pathname}${iframeSrc}`);
-            }
-            iframe.src = iframeSrc;
+            iframe.src = printer.url;
             iframe.title = printer.name;
             iframe.loading = 'lazy';
             
@@ -177,7 +236,6 @@ class PrinterDashboard {
                     <div style="text-align: center; color: #ef4444;">
                         <h3>Failed to load ${printer.name}</h3>
                         <p>Please check the URL: <a href="${printer.url}" target="_blank">${printer.url}</a></p>
-                        <p>Proxy path: <code>${iframeSrc}</code></p>
                         <button onclick="location.reload()" style="margin-top: 10px; padding: 8px 16px; background: #4c51bf; color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button>
                     </div>
                 `;
