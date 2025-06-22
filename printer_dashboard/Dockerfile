@@ -15,9 +15,7 @@ RUN \
     py3-requests \
     nginx \
     ca-certificates \
-    tzdata \
-    openssh-client \
-    sshpass
+    tzdata
 
 # Copy data for add-on
 COPY run.sh /
