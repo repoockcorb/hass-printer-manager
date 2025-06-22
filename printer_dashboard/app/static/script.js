@@ -64,7 +64,7 @@ class PrintFarmDashboard {
     
     async loadPrinters() {
         try {
-            const response = await fetch('/api/printers');
+            const response = await fetch('api/printers');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -102,7 +102,7 @@ class PrintFarmDashboard {
         this.setRefreshButtonState(true);
         
         try {
-            const response = await fetch('/api/status');
+            const response = await fetch('api/status');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -373,7 +373,7 @@ class PrintFarmDashboard {
     
     async controlPrinter(printerName, action) {
         try {
-            const response = await fetch(`/api/control/${printerName}/${action}`, {
+            const response = await fetch(`api/control/${printerName}/${action}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
