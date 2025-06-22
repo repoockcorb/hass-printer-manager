@@ -53,32 +53,34 @@ class HomeAssistantAuth:
             return None
 
 class PrinterStorage:
-    """Handle printer data storage using Home Assistant storage"""
+    """Handle printer data from Home Assistant configuration"""
     
     def __init__(self):
-        self.storage_path = '/data/printers.json'
+        self.options_path = '/data/options.json'
 
     def load_printers(self):
-        """Load printers from storage"""
+        """Load printers from Home Assistant configuration"""
         try:
-            if os.path.exists(self.storage_path):
-                with open(self.storage_path, 'r') as f:
-                    return json.load(f)
+            if os.path.exists(self.options_path):
+                with open(self.options_path, 'r') as f:
+                    options = json.load(f)
+                    printers = options.get('printers', [])
+                    
+                    # Add IDs to printers if they don't have them
+                    for i, printer in enumerate(printers):
+                        if 'id' not in printer:
+                            printer['id'] = str(i + 1)
+                    
+                    return printers
             return []
         except Exception as e:
-            logger.error(f"Error loading printers: {e}")
+            logger.error(f"Error loading printers from configuration: {e}")
             return []
 
     def save_printers(self, printers):
-        """Save printers to storage"""
-        try:
-            os.makedirs('/data', exist_ok=True)
-            with open(self.storage_path, 'w') as f:
-                json.dump(printers, f, indent=2)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving printers: {e}")
-            return False
+        """Printers are managed through Home Assistant configuration - read-only"""
+        logger.warning("Printers are configured through Home Assistant add-on configuration")
+        return False
 
 # Initialize components
 ha_auth = HomeAssistantAuth()
@@ -125,82 +127,29 @@ def get_printers():
 @app.route('/api/printers', methods=['POST'])
 @require_auth
 def add_printer():
-    """Add a new printer"""
-    try:
-        data = request.get_json()
-        
-        # Validate required fields
-        required_fields = ['name', 'type', 'url']
-        if not all(field in data for field in required_fields):
-            return jsonify({'error': 'Missing required fields'}), 400
-        
-        # Load existing printers
-        printers = printer_storage.load_printers()
-        
-        # Check for duplicate names
-        if any(printer['name'] == data['name'] for printer in printers):
-            return jsonify({'error': 'Printer name already exists'}), 400
-        
-        # Create new printer
-        printer = {
-            'id': str(len(printers) + 1),
-            'name': data['name'],
-            'type': data['type'],
-            'url': data['url'],
-            'created_at': data.get('created_at', '')
-        }
-        
-        printers.append(printer)
-        
-        if printer_storage.save_printers(printers):
-            return jsonify(printer), 201
-        else:
-            return jsonify({'error': 'Failed to save printer'}), 500
-            
-    except Exception as e:
-        logger.error(f"Error adding printer: {e}")
-        return jsonify({'error': str(e)}), 500
+    """Add printer endpoint - disabled (use configuration tab)"""
+    return jsonify({
+        'error': 'Adding printers is disabled. Please configure printers in the add-on configuration tab.',
+        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to add printers.'
+    }), 400
 
 @app.route('/api/printers/<printer_id>', methods=['DELETE'])
 @require_auth
 def delete_printer(printer_id):
-    """Delete a printer"""
-    try:
-        printers = printer_storage.load_printers()
-        printers = [p for p in printers if p['id'] != printer_id]
-        
-        if printer_storage.save_printers(printers):
-            return jsonify({'success': True})
-        else:
-            return jsonify({'error': 'Failed to delete printer'}), 500
-            
-    except Exception as e:
-        logger.error(f"Error deleting printer: {e}")
-        return jsonify({'error': str(e)}), 500
+    """Delete printer endpoint - disabled (use configuration tab)"""
+    return jsonify({
+        'error': 'Deleting printers is disabled. Please configure printers in the add-on configuration tab.',
+        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to manage printers.'
+    }), 400
 
 @app.route('/api/printers/<printer_id>', methods=['PUT'])
 @require_auth
 def update_printer(printer_id):
-    """Update a printer"""
-    try:
-        data = request.get_json()
-        printers = printer_storage.load_printers()
-        
-        for printer in printers:
-            if printer['id'] == printer_id:
-                printer.update(data)
-                break
-        else:
-            return jsonify({'error': 'Printer not found'}), 404
-        
-        if printer_storage.save_printers(printers):
-            return jsonify({'success': True})
-        else:
-            return jsonify({'error': 'Failed to update printer'}), 500
-            
-    except Exception as e:
-        logger.error(f"Error updating printer: {e}")
-        return jsonify({'error': str(e)}), 500
+    """Update printer endpoint - disabled (use configuration tab)"""
+    return jsonify({
+        'error': 'Updating printers is disabled. Please configure printers in the add-on configuration tab.',
+        'message': 'Go to Settings → Add-ons → Printer Dashboard → Configuration to manage printers.'
+    }), 400
 
 @app.route('/api/health')
 def health_check():

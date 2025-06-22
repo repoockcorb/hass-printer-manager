@@ -1,4 +1,0 @@
-name: "Printer Manager Add-on Repository"
-url: "https://github.com/repoockcorb/hass-printer-manager"
-maintainer: "repoockcorb"
-description: "Home Assistant add-on repository for managing multiple 3D printer interfaces" 

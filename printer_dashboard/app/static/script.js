@@ -34,10 +34,10 @@ class PrinterDashboard {
             }
         });
 
-        // Add printer form submission
+        // Add printer form submission - disabled (use configuration tab)
         document.getElementById('addPrinterForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            this.addPrinter();
+            this.showNotification('Printers are configured in the add-on configuration tab. Go to Settings → Add-ons → Printer Dashboard → Configuration to add printers.', 'warning');
         });
 
         // Escape key to close modal
@@ -95,8 +95,7 @@ class PrinterDashboard {
     }
 
     showAddPrinterModal() {
-        document.getElementById('addPrinterModal').style.display = 'block';
-        document.getElementById('printerName').focus();
+        this.showNotification('Printers are configured in the add-on configuration tab. Go to Settings → Add-ons → Printer Dashboard → Configuration to add printers.', 'warning');
     }
 
     hideAddPrinterModal() {
@@ -104,43 +103,7 @@ class PrinterDashboard {
         document.getElementById('addPrinterForm').reset();
     }
 
-    async addPrinter() {
-        const name = document.getElementById('printerName').value.trim();
-        const type = document.getElementById('printerType').value;
-        const url = document.getElementById('printerUrl').value.trim();
-
-        if (!name || !type || !url) {
-            this.showError('Please fill in all fields');
-            return;
-        }
-
-        try {
-            this.showLoading('Adding printer...');
-            
-            const printer = await this.makeApiRequest('/printers', {
-                method: 'POST',
-                body: JSON.stringify({
-                    name,
-                    type,
-                    url: this.normalizeUrl(url),
-                    created_at: new Date().toISOString()
-                })
-            });
-
-            this.printers.push(printer);
-            this.renderPrinters();
-            this.hideAddPrinterModal();
-            this.updateUI();
-
-            // Auto-select the newly added printer
-            this.switchTab(printer.id);
-            this.showSuccess('Printer added successfully!');
-        } catch (error) {
-            this.showError('Failed to add printer: ' + error.message);
-        } finally {
-            this.hideLoading();
-        }
-    }
+    // addPrinter() function removed - printers are now configured through Home Assistant configuration tab
 
     normalizeUrl(url) {
         // Ensure URL has protocol
@@ -151,39 +114,7 @@ class PrinterDashboard {
     }
 
     async removePrinter(printerId) {
-        const printer = this.printers.find(p => p.id === printerId);
-        if (!printer) return;
-
-        if (confirm(`Are you sure you want to remove "${printer.name}"?`)) {
-            try {
-                this.showLoading('Removing printer...');
-                
-                await this.makeApiRequest(`/printers/${printerId}`, {
-                    method: 'DELETE'
-                });
-
-                this.printers = this.printers.filter(p => p.id !== printerId);
-                
-                // If this was the active tab, switch to another tab or show welcome
-                if (this.activeTab === printerId) {
-                    const remainingPrinters = this.printers;
-                    if (remainingPrinters.length > 0) {
-                        this.switchTab(remainingPrinters[0].id);
-                    } else {
-                        this.activeTab = null;
-                        localStorage.removeItem('activeTab');
-                    }
-                }
-                
-                this.renderPrinters();
-                this.updateUI();
-                this.showSuccess('Printer removed successfully!');
-            } catch (error) {
-                this.showError('Failed to remove printer: ' + error.message);
-            } finally {
-                this.hideLoading();
-            }
-        }
+        this.showNotification('Printers are configured in the add-on configuration tab. Go to Settings → Add-ons → Printer Dashboard → Configuration to manage printers.', 'warning');
     }
 
     renderPrinters() {
