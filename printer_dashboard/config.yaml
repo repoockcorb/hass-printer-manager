@@ -1,5 +1,5 @@
 name: "Printer Dashboard"
-version: "1.2.2"
+version: "1.2.3"
 slug: "printer_dashboard"
 description: "A comprehensive printer management dashboard for Mainsail, OctoPrint, and other 3D printer interfaces"
 url: "https://github.com/repoockcorb/printer-dashboard-addon"
@@ -28,10 +28,7 @@ options:
   ssl: false
   certfile: fullchain.pem
   keyfile: privkey.pem
-  printers:
-    - name: "Example Printer"
-      type: "mainsail"
-      url: "http://192.168.1.100"
+  printers: []
 schema:
   ssl: bool
   certfile: str
@@ -39,10 +36,10 @@ schema:
   printers:
     - name: str
       type: str
-      url: url
+      url: str
 build_from:
   armhf: "alpine:3.18"
   armv7: "alpine:3.18"
   aarch64: "alpine:3.18"
   amd64: "alpine:3.18"
-  i386: "alpine:3.18" 
+  i386: "alpine:3.18"

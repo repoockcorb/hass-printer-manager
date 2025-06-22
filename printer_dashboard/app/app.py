@@ -61,10 +61,14 @@ class PrinterStorage:
     def load_printers(self):
         """Load printers from Home Assistant configuration"""
         try:
+            logger.info(f"Attempting to load printers from {self.options_path}")
             if os.path.exists(self.options_path):
+                logger.info(f"Options file exists: {self.options_path}")
                 with open(self.options_path, 'r') as f:
                     options = json.load(f)
+                    logger.info(f"Loaded options: {options}")
                     printers = options.get('printers', [])
+                    logger.info(f"Found {len(printers)} printers in configuration")
                     
                     # Add IDs to printers if they don't have them
                     for i, printer in enumerate(printers):
@@ -72,6 +76,8 @@ class PrinterStorage:
                             printer['id'] = str(i + 1)
                     
                     return printers
+            else:
+                logger.warning(f"Options file does not exist: {self.options_path}")
             return []
         except Exception as e:
             logger.error(f"Error loading printers from configuration: {e}")
@@ -121,7 +127,11 @@ def index():
 @require_auth
 def get_printers():
     """Get all printers"""
+    logger.info("API call to /api/printers received")
     printers = printer_storage.load_printers()
+    logger.info(f"Loaded {len(printers)} printers from configuration")
+    for i, printer in enumerate(printers):
+        logger.info(f"Printer {i+1}: {printer.get('name', 'Unknown')} - {printer.get('url', 'No URL')}")
     return jsonify(printers)
 
 @app.route('/api/printers', methods=['POST'])
@@ -156,9 +166,62 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'version': '1.0.0'})
 
+@app.route('/api/debug')
+@require_auth  
+def debug_info():
+    """Debug endpoint to show current configuration"""
+    printers = printer_storage.load_printers()
+    debug_data = {
+        'printers_count': len(printers),
+        'printers': printers,
+        'proxy_paths': []
+    }
+    
+    # Generate expected proxy paths
+    for printer in printers:
+        if printer.get('url', '').startswith('http'):
+            slug = printer['name'].replace(' ', '_').lower()
+            debug_data['proxy_paths'].append({
+                'name': printer['name'],
+                'original_url': printer['url'],
+                'slug': slug,
+                'proxy_path': f'/proxy/{slug}/',
+                'upstream_name': f'{slug}_up'
+            })
+    
+    return jsonify(debug_data)
+
+@app.route('/test-proxy')
+@require_auth
+def test_proxy():
+    """Test page to verify proxy functionality"""
+    printers = printer_storage.load_printers()
+    proxy_links = []
+    
+    for printer in printers:
+        if printer.get('url', '').startswith('http'):
+            slug = printer['name'].replace(' ', '_').lower()
+            proxy_links.append({
+                'name': printer['name'],
+                'original_url': printer['url'],
+                'proxy_path': f'/proxy/{slug}/',
+                'test_link': f'<a href="/proxy/{slug}/" target="_blank">Test {printer["name"]} Proxy</a>'
+            })
+    
+    html = '<h1>Proxy Test Page</h1>'
+    html += '<p>Click the links below to test if the proxy paths work:</p><ul>'
+    for link in proxy_links:
+        html += f'<li>{link["test_link"]} (Original: <a href="{link["original_url"]}" target="_blank">{link["original_url"]}</a>)</li>'
+    html += '</ul>'
+    html += '<p><a href="/">Back to Dashboard</a></p>'
+    
+    return html
+
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
+    # Log the 404 for debugging
+    logger.warning(f"404 Not Found: {request.method} {request.url} - Path: {request.path}")
+    return jsonify({'error': 'Not found', 'path': request.path, 'method': request.method}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
