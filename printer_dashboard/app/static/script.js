@@ -150,7 +150,8 @@ class PrinterDashboard {
             let iframeSrc = printer.url;
             if (iframeSrc.startsWith('http')) {
                 const slug = printer.name.replace(/ /g, '_').toLowerCase();
-                iframeSrc = `/proxy/${slug}/`;
+                iframeSrc = `proxy/${slug}/`;
+                console.log(`Converting ${printer.name} URL from ${printer.url} to proxy path: ${iframeSrc}`);
             }
             iframe.src = iframeSrc;
             iframe.title = printer.name;

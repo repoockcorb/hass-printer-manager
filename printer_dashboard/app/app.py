@@ -156,6 +156,31 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'version': '1.0.0'})
 
+@app.route('/api/debug')
+@require_auth  
+def debug_info():
+    """Debug endpoint to show current configuration"""
+    printers = printer_storage.load_printers()
+    debug_data = {
+        'printers_count': len(printers),
+        'printers': printers,
+        'proxy_paths': []
+    }
+    
+    # Generate expected proxy paths
+    for printer in printers:
+        if printer.get('url', '').startswith('http'):
+            slug = printer['name'].replace(' ', '_').lower()
+            debug_data['proxy_paths'].append({
+                'name': printer['name'],
+                'original_url': printer['url'],
+                'slug': slug,
+                'proxy_path': f'/proxy/{slug}/',
+                'upstream_name': f'{slug}_up'
+            })
+    
+    return jsonify(debug_data)
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({'error': 'Not found'}), 404

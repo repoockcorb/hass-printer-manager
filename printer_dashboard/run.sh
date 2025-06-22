@@ -58,6 +58,15 @@ location /proxy/${NAME}/ {
     proxy_set_header   X-Forwarded-Proto \$scheme;
     proxy_http_version 1.1;
     proxy_buffering    off;
+    
+    # Add error logging
+    error_log /dev/stdout warn;
+    access_log /dev/stdout;
+    
+    # Timeout settings
+    proxy_connect_timeout 10s;
+    proxy_send_timeout 10s;
+    proxy_read_timeout 10s;
 }
 
 EOF
@@ -69,6 +78,27 @@ fi
 echo "[INFO] Generated dynamic printer proxy config:"
 cat "$NGINX_UPSTREAMS"
 cat "$NGINX_LOCATIONS"
+
+# Test connectivity to printer interfaces
+echo "[INFO] Testing connectivity to printer interfaces..."
+if [ -f "$PRINTERS_JSON" ]; then
+    PRINTER_COUNT=$(jq '.printers | length' "$PRINTERS_JSON" 2>/dev/null || echo 0)
+    if [ "$PRINTER_COUNT" -gt 0 ]; then
+        jq -c '.printers[]' "$PRINTERS_JSON" | while read -r PRN; do
+            NAME=$(echo "$PRN" | jq -r '.name')
+            URL=$(echo  "$PRN" | jq -r '.url')
+            
+            if echo "$URL" | grep -qE '^https?://'; then
+                echo "[DEBUG] Testing connection to $NAME at $URL..."
+                if timeout 5 curl -s -o /dev/null -w "%{http_code}" "$URL" >/dev/null 2>&1; then
+                    echo "[INFO] ✓ $NAME ($URL) is reachable"
+                else
+                    echo "[WARN] ✗ $NAME ($URL) is not reachable - this may cause 404 errors"
+                fi
+            fi
+        done
+    fi
+fi
 
 # Start nginx in background
 echo "[INFO] Starting nginx..."
