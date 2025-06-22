@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Printer Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖨️</text></svg>">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🖨️ Printer Dashboard</h1>
+            <button id="addPrinterBtn" class="add-btn">+ Add Printer</button>
+        </header>
+
+        <div class="tab-container">
+            <div class="tab-nav" id="tabNav">
+                <!-- Tabs will be dynamically added here -->
+            </div>
+            
+            <div class="tab-content" id="tabContent">
+                <!-- Tab content will be dynamically added here -->
+            </div>
+        </div>
+
+        <div class="welcome-screen" id="welcomeScreen">
+            <div class="welcome-content">
+                <h2>Welcome to your Printer Dashboard!</h2>
+                <p>Click "Add Printer" to start adding your printer interfaces like Mainsail, OctoPrint, or any other web-based printer management system.</p>
+                <div class="feature-list">
+                    <div class="feature">
+                        <span class="feature-icon">🖥️</span>
+                        <span>Multiple printer interfaces in one place</span>
+                    </div>
+                    <div class="feature">
+                        <span class="feature-icon">⚡</span>
+                        <span>Quick tab switching</span>
+                    </div>
+                    <div class="feature">
+                        <span class="feature-icon">🔧</span>
+                        <span>Easy to add and manage printers</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Printer Modal -->
+    <div id="addPrinterModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add New Printer</h3>
+                <span class="close" id="closeModal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="addPrinterForm">
+                    <div class="form-group">
+                        <label for="printerName">Printer Name:</label>
+                        <input type="text" id="printerName" name="printerName" required placeholder="e.g., Ender 3, Prusa MK3">
+                    </div>
+                    <div class="form-group">
+                        <label for="printerType">Printer Type:</label>
+                        <select id="printerType" name="printerType" required>
+                            <option value="">Select Type</option>
+                            <option value="mainsail">Mainsail</option>
+                            <option value="octoprint">OctoPrint</option>
+                            <option value="custom">Custom URL</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="printerUrl">Printer URL:</label>
+                        <input type="url" id="printerUrl" name="printerUrl" required placeholder="http://192.168.1.100 or http://printer.local">
+                        <small class="help-text">Enter the full URL where your printer interface is accessible</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
+                        <button type="submit" class="btn-primary">Add Printer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html> 
