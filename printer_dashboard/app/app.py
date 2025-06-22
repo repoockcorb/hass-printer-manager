@@ -209,7 +209,9 @@ def test_proxy():
 
 @app.errorhandler(404)
 def not_found(error):
-    return jsonify({'error': 'Not found'}), 404
+    # Log the 404 for debugging
+    logger.warning(f"404 Not Found: {request.method} {request.url} - Path: {request.path}")
+    return jsonify({'error': 'Not found', 'path': request.path, 'method': request.method}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
