@@ -1,5 +1,5 @@
 name: "Printer Dashboard"
-version: "1.0.6"
+version: "1.0.7"
 slug: "printer_dashboard"
 description: "A comprehensive printer management dashboard for Mainsail, OctoPrint, and other 3D printer interfaces"
 url: "https://github.com/repoockcorb/printer-dashboard-addon"
@@ -45,4 +45,4 @@ build_from:
   armv7: "alpine:3.18"
   aarch64: "alpine:3.18"
   amd64: "alpine:3.18"
-  i386: "alpine:3.18" 
+  i386: "alpine:3.18"

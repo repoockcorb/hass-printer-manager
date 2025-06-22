@@ -146,7 +146,13 @@ class PrinterDashboard {
             
             const iframe = document.createElement('iframe');
             iframe.className = 'tab-iframe';
-            iframe.src = printer.url;
+            // If URL starts with http, build proxy path automatically
+            let iframeSrc = printer.url;
+            if (iframeSrc.startsWith('http')) {
+                const slug = printer.name.replace(/ /g, '_').toLowerCase();
+                iframeSrc = `/proxy/${slug}/`;
+            }
+            iframe.src = iframeSrc;
             iframe.title = printer.name;
             iframe.loading = 'lazy';
             
