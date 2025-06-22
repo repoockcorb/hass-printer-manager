@@ -1,9 +1,11 @@
-#!/usr/bin/with-contenv bashio
+#!/bin/bash
+set -e
+
 # ==============================================================================
 # Start the Printer Dashboard add-on
 # ==============================================================================
 
-bashio::log.info "Starting Printer Dashboard..."
+echo "[INFO] Starting Printer Dashboard..."
 
 # Export environment variables for the Flask app
 export SUPERVISOR_TOKEN="${SUPERVISOR_TOKEN}"
@@ -14,10 +16,24 @@ export HOME_ASSISTANT_URL="http://supervisor/core"
 mkdir -p /data
 
 # Start nginx in background
-bashio::log.info "Starting nginx..."
+echo "[INFO] Starting nginx..."
 nginx &
 
+# Function to handle shutdown gracefully
+shutdown() {
+    echo "[INFO] Shutting down services..."
+    pkill -f "python3 app.py" || true
+    pkill nginx || true
+    exit 0
+}
+
+# Trap signals for graceful shutdown
+trap shutdown SIGTERM SIGINT
+
 # Start the Flask application in foreground
-bashio::log.info "Starting Python Flask backend..."
+echo "[INFO] Starting Python Flask backend..."
 cd /app
-exec python3 app.py 
+python3 app.py &
+
+# Wait for background processes
+wait 
