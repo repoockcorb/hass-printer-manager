@@ -2,7 +2,7 @@ class PrinterDashboard {
     constructor() {
         this.printers = [];
         this.activeTab = localStorage.getItem('activeTab') || null;
-        this.apiBase = '/api';
+        this.apiBase = 'api';
         this.init();
     }
 
@@ -60,8 +60,10 @@ class PrinterDashboard {
     }
 
     async makeApiRequest(endpoint, options = {}) {
+        // ensure no leading slash so we stay inside ingress path
+        if (endpoint.startsWith('/')) endpoint = endpoint.slice(1);
         try {
-            const response = await fetch(`${this.apiBase}${endpoint}`, {
+            const response = await fetch(`${this.apiBase}/${endpoint}`, {
                 headers: {
                     'Content-Type': 'application/json',
                     ...options.headers
