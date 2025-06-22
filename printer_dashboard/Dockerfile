@@ -7,10 +7,15 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Install requirements for add-on
 RUN \
   apk add --no-cache \
+    bash \
+    curl \
+    jq \
     python3 \
     py3-flask \
     py3-requests \
-    nginx
+    nginx \
+    ca-certificates \
+    tzdata
 
 # Copy data for add-on
 COPY run.sh /
