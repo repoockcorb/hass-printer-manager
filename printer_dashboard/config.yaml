@@ -2,7 +2,7 @@ name: "Printer Dashboard"
 version: "1.0.0"
 slug: "printer_dashboard"
 description: "A comprehensive printer management dashboard for Mainsail, OctoPrint, and other 3D printer interfaces"
-url: "https://github.com/yourusername/printer-dashboard-addon"
+url: "https://github.com/repoockcorb/printer-dashboard-addon"
 arch:
   - armhf
   - armv7
@@ -31,4 +31,9 @@ schema:
   ssl: bool
   certfile: str
   keyfile: str
-image: "ghcr.io/yourusername/printer-dashboard-{arch}" 
+build_from:
+  armhf: "homeassistant/armhf-base:latest"
+  armv7: "homeassistant/armv7-base:latest"
+  aarch64: "homeassistant/aarch64-base:latest"
+  amd64: "homeassistant/amd64-base:latest"
+  i386: "homeassistant/i386-base:latest" 
