@@ -1,5 +1,5 @@
 name: "Printer Dashboard"
-version: "1.0.0"
+version: "1.0.1"
 slug: "printer_dashboard"
 description: "A comprehensive printer management dashboard for Mainsail, OctoPrint, and other 3D printer interfaces"
 url: "https://github.com/repoockcorb/hass-printer-manager"
@@ -31,4 +31,5 @@ schema:
   ssl: bool
   certfile: str
   keyfile: str
-image: "ghcr.io/repoockcorb/printer-dashboard-{arch}" 
+image: "ghcr.io/repoockcorb/printer-dashboard-{arch}"
+init: false 

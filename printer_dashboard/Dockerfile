@@ -54,4 +54,4 @@ LABEL \
     org.opencontainers.image.revision=${BUILD_REF} \
     org.opencontainers.image.version=${BUILD_VERSION}
 
-CMD [ "/run.sh" ] 
+CMD [ "/run.sh" ]
