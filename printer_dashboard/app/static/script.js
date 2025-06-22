@@ -34,10 +34,10 @@ class PrinterDashboard {
             }
         });
 
-        // Add printer form submission
+        // Add printer form submission - disabled (use configuration tab)
         document.getElementById('addPrinterForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            this.addPrinter();
+            this.showNotification('Printers are configured in the add-on configuration tab. Go to Settings → Add-ons → Printer Dashboard → Configuration to add printers.', 'warning');
         });
 
         // Escape key to close modal
@@ -103,43 +103,7 @@ class PrinterDashboard {
         document.getElementById('addPrinterForm').reset();
     }
 
-    async addPrinter() {
-        const name = document.getElementById('printerName').value.trim();
-        const type = document.getElementById('printerType').value;
-        const url = document.getElementById('printerUrl').value.trim();
-
-        if (!name || !type || !url) {
-            this.showError('Please fill in all fields');
-            return;
-        }
-
-        try {
-            this.showLoading('Adding printer...');
-            
-            const printer = await this.makeApiRequest('/printers', {
-                method: 'POST',
-                body: JSON.stringify({
-                    name,
-                    type,
-                    url: this.normalizeUrl(url),
-                    created_at: new Date().toISOString()
-                })
-            });
-
-            this.printers.push(printer);
-            this.renderPrinters();
-            this.hideAddPrinterModal();
-            this.updateUI();
-
-            // Auto-select the newly added printer
-            this.switchTab(printer.id);
-            this.showSuccess('Printer added successfully!');
-        } catch (error) {
-            this.showError('Failed to add printer: ' + error.message);
-        } finally {
-            this.hideLoading();
-        }
-    }
+    // addPrinter() function removed - printers are now configured through Home Assistant configuration tab
 
     normalizeUrl(url) {
         // Ensure URL has protocol
