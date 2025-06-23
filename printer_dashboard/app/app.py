@@ -179,6 +179,39 @@ class KlipperAPI(PrinterAPI):
     def cancel_print(self):
         """Cancel current print"""
         return self._make_request('printer/print/cancel', method='POST')
+    
+    def home_printer(self, axes=None):
+        """Home printer axes. If axes is None, homes all axes"""
+        if axes is None:
+            axes = ['X', 'Y', 'Z']
+        elif isinstance(axes, str):
+            axes = [axes.upper()]
+        
+        gcode_commands = []
+        for axis in axes:
+            if axis.upper() in ['X', 'Y', 'Z']:
+                gcode_commands.append(f"G28 {axis.upper()}")
+        
+        if gcode_commands:
+            return self._make_request('printer/gcode/script', method='POST', 
+                                    data={'script': '\n'.join(gcode_commands)})
+        return None
+    
+    def jog_printer(self, axis, distance):
+        """Jog printer in specified axis by distance (in mm)"""
+        axis = axis.upper()
+        if axis not in ['X', 'Y', 'Z']:
+            return None
+            
+        try:
+            distance = float(distance)
+        except (ValueError, TypeError):
+            return None
+        
+        # Use relative positioning
+        gcode = f"G91\nG1 {axis}{distance} F3000\nG90"
+        return self._make_request('printer/gcode/script', method='POST', 
+                                data={'script': gcode})
 
 class OctoPrintAPI(PrinterAPI):
     """OctoPrint API for OctoPrint printers"""
@@ -277,6 +310,35 @@ class OctoPrintAPI(PrinterAPI):
     def cancel_print(self):
         """Cancel current print"""
         return self._make_request('api/job', method='POST', data={'command': 'cancel'})
+    
+    def home_printer(self, axes=None):
+        """Home printer axes. If axes is None, homes all axes"""
+        if axes is None:
+            axes = ['x', 'y', 'z']
+        elif isinstance(axes, str):
+            axes = [axes.lower()]
+        
+        # OctoPrint home command format
+        command_data = {'command': 'home', 'axes': axes}
+        return self._make_request('api/printer/printhead', method='POST', data=command_data)
+    
+    def jog_printer(self, axis, distance):
+        """Jog printer in specified axis by distance (in mm)"""
+        axis = axis.lower()
+        if axis not in ['x', 'y', 'z']:
+            return None
+            
+        try:
+            distance = float(distance)
+        except (ValueError, TypeError):
+            return None
+        
+        # OctoPrint jog command format
+        command_data = {
+            'command': 'jog',
+            axis: distance
+        }
+        return self._make_request('api/printer/printhead', method='POST', data=command_data)
 
 class PrinterManager:
     """Manages multiple printer connections and status updates"""
@@ -342,8 +404,8 @@ class PrinterManager:
             return self.printers[name].get_status()
         return None
     
-    def control_printer(self, name, action):
-        """Control a specific printer (pause/resume/cancel)"""
+    def control_printer(self, name, action, **kwargs):
+        """Control a specific printer (pause/resume/cancel/home/jog)"""
         if name not in self.printers:
             return {'success': False, 'error': 'Printer not found'}
             
@@ -355,6 +417,15 @@ class PrinterManager:
                 result = printer.resume_print()
             elif action == 'cancel':
                 result = printer.cancel_print()
+            elif action == 'home':
+                axes = kwargs.get('axes')
+                result = printer.home_printer(axes)
+            elif action == 'jog':
+                axis = kwargs.get('axis')
+                distance = kwargs.get('distance')
+                if not axis or distance is None:
+                    return {'success': False, 'error': 'Missing axis or distance for jog command'}
+                result = printer.jog_printer(axis, distance)
             else:
                 return {'success': False, 'error': 'Invalid action'}
                 
@@ -603,7 +674,18 @@ def get_printer_status(printer_name):
 def control_printer(printer_name, action):
     """API endpoint to control a printer"""
     try:
-        result = printer_manager.control_printer(printer_name, action)
+        # Get additional parameters from request JSON
+        data = request.get_json() or {}
+        
+        # Extract parameters for different actions
+        kwargs = {}
+        if action == 'home':
+            kwargs['axes'] = data.get('axes')  # Can be None for all axes, or specific axes like ['X', 'Y']
+        elif action == 'jog':
+            kwargs['axis'] = data.get('axis')  # Required: 'X', 'Y', or 'Z'
+            kwargs['distance'] = data.get('distance')  # Required: distance in mm
+        
+        result = printer_manager.control_printer(printer_name, action, **kwargs)
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error controlling {printer_name}: {e}")

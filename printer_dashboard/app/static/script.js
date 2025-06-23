@@ -8,6 +8,8 @@ class PrintFarmDashboard {
             status: 'all',
             type: 'all'
         };
+        this.selectedDistance = 0.1; // Default jog distance
+        this.currentMovementPrinter = null; // Track which printer's movement modal is open
         
         this.init();
     }
@@ -68,15 +70,79 @@ class PrintFarmDashboard {
             }
         });
         
+        // Movement modal controls
+        const movementModal = document.getElementById('movement-modal');
+        const movementCloseBtn = document.querySelector('.movement-modal-close');
+        const movementCloseFooterBtn = document.getElementById('movement-close');
+        
+        if (movementCloseBtn) movementCloseBtn.addEventListener('click', () => this.hideMovementModal());
+        if (movementCloseFooterBtn) movementCloseFooterBtn.addEventListener('click', () => this.hideMovementModal());
+        
+        // Click outside movement modal to close
+        movementModal.addEventListener('click', (e) => {
+            if (e.target === movementModal) {
+                this.hideMovementModal();
+            }
+        });
+        
+        // Distance selector buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('btn-distance')) {
+                // Remove active class from all distance buttons
+                document.querySelectorAll('.btn-distance').forEach(btn => btn.classList.remove('active'));
+                // Add active class to clicked button
+                e.target.classList.add('active');
+                this.selectedDistance = parseFloat(e.target.getAttribute('data-distance'));
+            }
+        });
+        
+        // Movement action buttons (homing)
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-movement-action')) {
+                const btn = e.target.closest('.btn-movement-action');
+                const action = btn.getAttribute('data-action');
+                const axes = btn.getAttribute('data-axes');
+                
+                if (action === 'home') {
+                    this.performHomeAction(axes);
+                }
+            }
+        });
+        
+        // Jog buttons
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-jog')) {
+                const btn = e.target.closest('.btn-jog');
+                const axis = btn.getAttribute('data-axis');
+                const direction = parseFloat(btn.getAttribute('data-direction'));
+                
+                this.performJogAction(axis, direction);
+            }
+        });
+        
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.hideModal();
                 this.hideCameraModal();
+                this.hideMovementModal();
             } else if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 this.refreshAll();
             }
+        });
+        
+        // Setup control buttons
+        const controlButtons = card.querySelectorAll('.btn-control');
+        controlButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const action = e.target.closest('button').getAttribute('data-action');
+                if (action === 'movement') {
+                    this.showMovementModal(printerName);
+                } else {
+                    this.showControlModal(printerName, action);
+                }
+            });
         });
     }
     
@@ -179,7 +245,11 @@ class PrintFarmDashboard {
             controlButtons.forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     const action = e.target.closest('button').getAttribute('data-action');
-                    this.showControlModal(printerName, action);
+                    if (action === 'movement') {
+                        this.showMovementModal(printerName);
+                    } else {
+                        this.showControlModal(printerName, action);
+                    }
                 });
             });
             
@@ -785,6 +855,99 @@ class PrintFarmDashboard {
         if (this.cameraRefreshInterval) {
             clearInterval(this.cameraRefreshInterval);
             this.cameraRefreshInterval = null;
+        }
+    }
+    
+    hideMovementModal() {
+        const modal = document.getElementById('movement-modal');
+        modal.style.display = 'none';
+        this.currentMovementPrinter = null;
+    }
+    
+    showMovementModal(printerName) {
+        const modal = document.getElementById('movement-modal');
+        const title = document.getElementById('movement-modal-title');
+        
+        // Set title
+        title.textContent = `${printerName} Movement Controls`;
+        
+        // Store current printer
+        this.currentMovementPrinter = printerName;
+        
+        // Show modal
+        modal.style.display = 'flex';
+        
+        // Reset distance selection to default
+        document.querySelectorAll('.btn-distance').forEach(btn => btn.classList.remove('active'));
+        document.querySelector('.btn-distance[data-distance="0.1"]').classList.add('active');
+        this.selectedDistance = 0.1;
+    }
+    
+    async performHomeAction(axes) {
+        if (!this.currentMovementPrinter) return;
+        
+        try {
+            // Prepare request data
+            const requestData = {};
+            if (axes && axes !== 'all') {
+                requestData.axes = [axes];
+            }
+            // If axes is 'all' or null, don't send axes parameter (will home all)
+            
+            console.log(`Homing ${this.currentMovementPrinter}: ${axes || 'all axes'}`);
+            
+            const response = await fetch(`api/control/${this.currentMovementPrinter}/home`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestData)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showNotification(`Homing ${axes || 'all axes'} successful`, 'success');
+            } else {
+                this.showNotification(`Homing failed: ${result.error}`, 'error');
+            }
+            
+        } catch (error) {
+            console.error('Error performing home action:', error);
+            this.showNotification(`Homing failed: ${error.message}`, 'error');
+        }
+    }
+    
+    async performJogAction(axis, direction) {
+        if (!this.currentMovementPrinter || !this.selectedDistance) return;
+        
+        const distance = this.selectedDistance * direction;
+        
+        try {
+            console.log(`Jogging ${this.currentMovementPrinter}: ${axis}${distance > 0 ? '+' : ''}${distance}mm`);
+            
+            const response = await fetch(`api/control/${this.currentMovementPrinter}/jog`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    axis: axis,
+                    distance: distance
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.showNotification(`Jogged ${axis}${distance > 0 ? '+' : ''}${distance}mm`, 'success');
+            } else {
+                this.showNotification(`Jog failed: ${result.error}`, 'error');
+            }
+            
+        } catch (error) {
+            console.error('Error performing jog action:', error);
+            this.showNotification(`Jog failed: ${error.message}`, 'error');
         }
     }
 }

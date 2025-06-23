@@ -190,6 +190,10 @@
                         <i class="fas fa-stop"></i>
                         Cancel
                     </button>
+                    <button class="btn btn-control btn-movement movement-btn" data-action="movement">
+                        <i class="fas fa-arrows-alt"></i>
+                        Move
+                    </button>
                 </div>
                 <div class="last-update">
                     Updated: <span class="update-time">Never</span>
@@ -224,6 +228,105 @@
                     Refresh
                 </button>
                 <button id="camera-close" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Movement Controls Modal -->
+    <div id="movement-modal" class="modal movement-modal" style="display: none;">
+        <div class="modal-content movement-modal-content">
+            <div class="modal-header">
+                <h3 id="movement-modal-title">Movement Controls</h3>
+                <button class="modal-close movement-modal-close">&times;</button>
+            </div>
+            <div class="modal-body movement-modal-body">
+                <!-- Homing Controls -->
+                <div class="movement-section">
+                    <h4>Homing</h4>
+                    <div class="homing-controls">
+                        <button class="btn btn-movement-action" data-action="home" data-axes="all">
+                            <i class="fas fa-home"></i>
+                            Home All
+                        </button>
+                        <button class="btn btn-movement-action" data-action="home" data-axes="X">
+                            <i class="fas fa-home"></i>
+                            Home X
+                        </button>
+                        <button class="btn btn-movement-action" data-action="home" data-axes="Y">
+                            <i class="fas fa-home"></i>
+                            Home Y
+                        </button>
+                        <button class="btn btn-movement-action" data-action="home" data-axes="Z">
+                            <i class="fas fa-home"></i>
+                            Home Z
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Jog Controls -->
+                <div class="movement-section">
+                    <h4>Jog Controls</h4>
+                    
+                    <!-- Distance Selection -->
+                    <div class="jog-distance-selector">
+                        <label>Distance:</label>
+                        <div class="distance-buttons">
+                            <button class="btn btn-distance active" data-distance="0.1">0.1mm</button>
+                            <button class="btn btn-distance" data-distance="1">1mm</button>
+                            <button class="btn btn-distance" data-distance="10">10mm</button>
+                            <button class="btn btn-distance" data-distance="100">100mm</button>
+                        </div>
+                    </div>
+
+                    <!-- XY Jog Controls -->
+                    <div class="xy-jog-controls">
+                        <div class="jog-grid">
+                            <div class="jog-row">
+                                <button class="btn btn-jog" data-axis="Y" data-direction="1">
+                                    <i class="fas fa-arrow-up"></i>
+                                    Y+
+                                </button>
+                            </div>
+                            <div class="jog-row">
+                                <button class="btn btn-jog" data-axis="X" data-direction="-1">
+                                    <i class="fas fa-arrow-left"></i>
+                                    X-
+                                </button>
+                                <div class="jog-center">
+                                    <i class="fas fa-crosshairs"></i>
+                                </div>
+                                <button class="btn btn-jog" data-axis="X" data-direction="1">
+                                    <i class="fas fa-arrow-right"></i>
+                                    X+
+                                </button>
+                            </div>
+                            <div class="jog-row">
+                                <button class="btn btn-jog" data-axis="Y" data-direction="-1">
+                                    <i class="fas fa-arrow-down"></i>
+                                    Y-
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Z Jog Controls -->
+                    <div class="z-jog-controls">
+                        <label>Z Axis:</label>
+                        <div class="z-buttons">
+                            <button class="btn btn-jog btn-z-up" data-axis="Z" data-direction="1">
+                                <i class="fas fa-arrow-up"></i>
+                                Z+
+                            </button>
+                            <button class="btn btn-jog btn-z-down" data-axis="Z" data-direction="-1">
+                                <i class="fas fa-arrow-down"></i>
+                                Z-
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="movement-close" class="btn btn-primary">Close</button>
             </div>
         </div>
     </div>
