@@ -491,21 +491,40 @@ def proxy_camera(printer_name):
     if not cam_url:
         return jsonify({'error':'camera_url not configured'}),404
     try:
-        # Accept self-signed certificates by skipping verification so the proxy still works over HTTPS
+        # Accept self-signed certificates by skipping verification so the proxy still works over HTTPS.
         upstream = requests.get(cam_url, stream=True, timeout=10, verify=False)
         upstream.raise_for_status()
     except Exception as e:
         logger.error(f"Camera proxy error for {printer_name}: {e}")
         return jsonify({'error': str(e)}), 502
 
-    # Preserve upstream content type if it already specifies multipart/x-mixed-replace with boundary
-    content_type_header = upstream.headers.get('Content-Type', '')
-    if 'multipart' not in content_type_header.lower():
-        # Default value that works for most MJPEG streams and iOS WKWebView
-        content_type_header = 'multipart/x-mixed-replace;boundary=frame'
+    # Preserve upstream Content-Type when it already specifies a boundary.
+    content_type_header = upstream.headers.get('Content-Type', '') or ''
 
-    content_type = content_type_header
-    
+    # Peek at the first chunk so we can sniff the boundary string if missing.
+    pre_buffer = b''
+    try:
+        pre_buffer = next(upstream.iter_content(chunk_size=2048))
+    except StopIteration:
+        pass  # Empty stream – we'll handle below
+
+    boundary_param = None
+
+    if 'multipart' in content_type_header.lower() and 'boundary=' in content_type_header.lower():
+        # Use upstream header as-is when boundary param present.
+        content_type = content_type_header
+    else:
+        # Try to detect boundary from the first chunk (it usually starts with --BOUNDARY) .
+        import re
+        m = re.match(rb'--([^\r\n; ]+)', pre_buffer)
+        if m:
+            boundary_param = m.group(1).decode('utf-8', 'ignore')
+        else:
+            boundary_param = 'frame'
+
+        # Ensure there is a space before boundary per RFC.
+        content_type = f'multipart/x-mixed-replace; boundary={boundary_param}'
+
     response_headers = {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
@@ -520,6 +539,10 @@ def proxy_camera(printer_name):
     
     def generate():
         try:
+            # Yield the pre-buffered bytes first (if any) so no data is lost.
+            if pre_buffer:
+                yield pre_buffer
+            # Stream the remaining content
             for chunk in upstream.iter_content(chunk_size=4096):
                 if chunk:
                     yield chunk
