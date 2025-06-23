@@ -466,74 +466,37 @@ class HomeAssistantAPI:
             return None
     
     def get_camera_snapshot_url(self, entity_id):
-        """Get camera snapshot URL using HA's camera API for proper authSig tokens"""
+        """Get camera snapshot URL with proper authSig JWT tokens"""
         try:
             logger.info(f"Getting camera snapshot for entity: {entity_id}")
             
-            # Use Home Assistant's camera API to generate proper signed URLs
-            # This endpoint generates authSig JWT tokens like the HA frontend uses
-            camera_api_url = f"{self.internal_url}/api/camera_proxy/{entity_id}"
-            
-            headers = {
-                'Authorization': f'Bearer {self.token}',
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-cache'
-            }
-            
-            # Add standard camera parameters
-            params = {
-                'width': 640,
-                'height': 480
-            }
-            
-            try:
-                # Make request to camera API - this should generate proper authSig token
-                response = requests.get(camera_api_url, headers=headers, params=params, timeout=10, allow_redirects=False)
-                
-                logger.info(f"Camera API response status: {response.status_code}")
-                logger.info(f"Camera API response headers: {dict(response.headers)}")
-                
-                # Get external URL for browser access
-                external_url = self._get_external_ha_url()
-                
-                # If HA redirects us to the signed URL, use that
-                if response.status_code in [301, 302, 307, 308] and 'Location' in response.headers:
-                    redirect_url = response.headers['Location']
-                    if redirect_url.startswith('/'):
-                        # Convert internal URL to external URL
-                        redirect_url = f"{external_url}{redirect_url}"
-                    else:
-                        # Replace supervisor URL with external URL
-                        redirect_url = redirect_url.replace(self.internal_url, external_url)
-                    logger.info(f"Camera redirect URL with authSig (external): {redirect_url}")
-                    return redirect_url
-                
-                # If we get 200, the URL itself should work
-                elif response.status_code == 200:
-                    # Build the URL with external URL that browser can access
-                    final_url = f"{external_url}/api/camera_proxy/{entity_id}?width=640&height=480"
-                    logger.info(f"Direct camera URL (external): {final_url}")
-                    return final_url
-                    
-                else:
-                    logger.warning(f"Unexpected response from camera API: {response.status_code}")
-                    
-            except Exception as e:
-                logger.warning(f"Camera API request failed: {e}")
-            
-            # Fallback: Try using entity_picture but convert to external URL
+            # First, get the entity_picture which contains the properly signed URL
             entity_state = self._make_request(f'states/{entity_id}')
-            if entity_state:
-                entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-                if entity_picture:
-                    # Convert internal URL to external URL for browser access
-                    external_url = self._get_external_ha_url()
-                    full_url = f"{external_url}{entity_picture}"
-                    logger.info(f"Camera URL from entity_picture (external): {full_url}")
-                    return full_url
+            if not entity_state:
+                logger.error(f"No entity state returned for {entity_id}")
+                return None
             
-            logger.error(f"Failed to get camera URL for {entity_id}")
-            return None
+            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
+            if not entity_picture:
+                logger.error(f"No entity_picture found for {entity_id}")
+                return None
+            
+            logger.info(f"Entity picture URL: {entity_picture}")
+            
+            # The entity_picture contains the signed URL with authSig token
+            # Convert it to external URL that browsers can access
+            external_url = self._get_external_ha_url()
+            
+            # The entity_picture is a relative URL like:
+            # /api/camera_proxy/camera.prusa_mk3s_mmu3?token=abc123&authSig=JWT_TOKEN
+            if entity_picture.startswith('/'):
+                full_camera_url = f"{external_url}{entity_picture}"
+            else:
+                # If it's already a full URL, replace the base
+                full_camera_url = entity_picture.replace(self.internal_url, external_url)
+            
+            logger.info(f"Final camera URL with authSig: {full_camera_url}")
+            return full_camera_url
                 
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
