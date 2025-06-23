@@ -726,17 +726,6 @@ class PrintFarmDashboard {
                 
                 console.log('Loading image from URL:', imageUrl); // Debug log
                 
-                // // Test if the URL is accessible by making a fetch request
-                // try {
-                //     const imageResponse = await fetch(imageUrl, { 
-                //         method: 'HEAD',  // Just check if URL is accessible
-                //         mode: 'no-cors'  // Avoid CORS issues for testing
-                //     });
-                //     console.log('Image URL accessibility test:', imageResponse.status || 'no-cors success');
-                // } catch (urlError) {
-                //     console.error('Image URL not accessible:', urlError);
-                // }
-                
                 stream.onload = () => {
                     loading.style.display = 'none';
                     stream.style.display = 'block';
@@ -751,16 +740,6 @@ class PrintFarmDashboard {
                     console.error('❌ Camera image failed to load:', e); // Debug log
                     console.error('Failed URL:', imageUrl); // Debug log
                     console.error('Current time:', new Date().toLocaleTimeString());
-                    
-                    // Try to get more details about the failure
-                    fetch(imageUrl, { method: 'HEAD' })
-                        .then(response => {
-                            console.error('HEAD request status:', response.status, response.statusText);
-                            console.error('HEAD request headers:', Object.fromEntries(response.headers.entries()));
-                        })
-                        .catch(fetchError => {
-                            console.error('HEAD request failed:', fetchError);
-                        });
                 };
                 
                 // Set the image source directly
