@@ -759,4 +759,29 @@ body {
 
 .text-error {
     color: #f87171 !important;
+}
+
+/* Camera thumbnail */
+.camera-thumbnail{
+  margin-top:1rem;
+  text-align:center;
+}
+.snapshot-img{
+  width:100%;
+  max-height:200px;
+  object-fit:cover;
+  border-radius:8px;
+}
+/* Camera modal */
+.camera-modal-content{
+  width:95%;
+  max-width:800px;
+}
+.camera-body{
+  padding:0;
+}
+#camera-stream{
+  width:100%;
+  height:auto;
+  border-radius:0 0 16px 16px;
 } 

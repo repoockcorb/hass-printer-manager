@@ -1,6 +1,6 @@
 name: "Print Farm Dashboard"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "3.0.5"
+version: "3.0.6"
 slug: "printer_dashboard"
 init: false
 arch:
@@ -25,4 +25,6 @@ schema:
     - name: str
       type: list(klipper|octoprint)
       url: url
-      api_key: str? 
+      api_key: str?
+      camera_url: url?
+      snapshot_url: url? 

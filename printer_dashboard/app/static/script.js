@@ -155,6 +155,13 @@ class PrintFarmDashboard {
                 });
             });
             
+            const cameraBtn = card.querySelector('.camera-btn');
+            if(cameraBtn){
+              cameraBtn.addEventListener('click',()=>{
+                 this.showCameraModal(printerName);
+              });
+            }
+            
             grid.appendChild(card);
         }
     }
@@ -251,6 +258,15 @@ class PrintFarmDashboard {
         const updateTime = card.querySelector('.update-time');
         if (printer.lastUpdate) {
             updateTime.textContent = this.formatRelativeTime(printer.lastUpdate);
+        }
+        
+        // snapshot update
+        const snapImg = card.querySelector('.snapshot-img');
+        if(snapImg){
+          const snapURL = printer.config.snapshot_url || printer.config.camera_url?.replace('stream','snapshot');
+          if(snapURL){
+            snapImg.src = `${snapURL}${snapURL.includes('?')?'&':'?'}_ts=${Date.now()}`;
+          }
         }
     }
     
@@ -563,6 +579,21 @@ class PrintFarmDashboard {
         } else {
             return `${diffDays}d ago`;
         }
+    }
+    
+    showCameraModal(printerName){
+        const printer = this.printers.get(printerName);
+        if(!printer) return;
+        const camURL = printer.config.camera_url;
+        if(!camURL){this.showNotification('No camera URL configured','error');return;}
+        const modal = document.getElementById('camera-modal');
+        const img = document.getElementById('camera-stream');
+        const title=document.getElementById('camera-title');
+        title.textContent=`${printerName} - Live Camera`;
+        img.src = camURL;
+        modal.style.display='flex';
+        modal.querySelector('.camera-close').onclick=()=>{modal.style.display='none'; img.src='';};
+        modal.onclick=(e)=>{if(e.target===modal){modal.style.display='none';img.src='';}};
     }
 }
 
