@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
+# Disable insecure request warnings globally (useful when upstream camera has self-signed certificate)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 class PrinterAPI:
     """Base class for printer API interactions"""
     
@@ -488,16 +491,20 @@ def proxy_camera(printer_name):
     if not cam_url:
         return jsonify({'error':'camera_url not configured'}),404
     try:
-        upstream = requests.get(cam_url, stream=True, timeout=10)
+        # Accept self-signed certificates by skipping verification so the proxy still works over HTTPS
+        upstream = requests.get(cam_url, stream=True, timeout=10, verify=False)
         upstream.raise_for_status()
     except Exception as e:
         logger.error(f"Camera proxy error for {printer_name}: {e}")
         return jsonify({'error': str(e)}), 502
 
-    # Determine proper Content-Type with boundary parameter so iOS/Android render MJPEG
-    content_type = upstream.headers.get('Content-Type', 'multipart/x-mixed-replace')
-    if 'multipart' in content_type:
-        content_type = 'multipart/x-mixed-replace; boundary=frame'
+    # Preserve upstream content type if it already specifies multipart/x-mixed-replace with boundary
+    content_type_header = upstream.headers.get('Content-Type', '')
+    if 'multipart' not in content_type_header.lower():
+        # Default value that works for most MJPEG streams and iOS WKWebView
+        content_type_header = 'multipart/x-mixed-replace;boundary=frame'
+
+    content_type = content_type_header
     
     response_headers = {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -505,7 +512,10 @@ def proxy_camera(printer_name):
         'Expires': '0',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no',
-        'Content-Encoding': 'identity'
+        'Content-Encoding': 'identity',
+        # Allow embedding inside Home Assistant mobile (WKWebView) via relaxed CORS
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': '*'
     }
     
     def generate():
@@ -530,7 +540,7 @@ def proxy_snapshot(printer_name):
     if not cfg or not cfg.get('snapshot_url'):
         return jsonify({'error':'snapshot_url not configured'}),404
     try:
-        up = requests.get(cfg['snapshot_url'], timeout=10)
+        up = requests.get(cfg['snapshot_url'], timeout=10, verify=False)
         up.raise_for_status()
     except Exception as exc:
         logger.error(f"Snapshot proxy error for {printer_name}: {exc}")
@@ -540,7 +550,9 @@ def proxy_snapshot(printer_name):
                     headers={
                         'Cache-Control':'no-cache, no-store, must-revalidate',
                         'Pragma':'no-cache',
-                        'Expires':'0'
+                        'Expires':'0',
+                        'Access-Control-Allow-Origin':'*',
+                        'Access-Control-Allow-Headers':'*'
                     })
 
 if __name__ == '__main__':

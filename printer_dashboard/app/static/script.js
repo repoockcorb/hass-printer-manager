@@ -263,13 +263,12 @@ class PrintFarmDashboard {
         
         // snapshot update
         const slug=printerName.toLowerCase().replace(/\s+/g,'_');
-        const proxSnap=`snapshot/${slug}`;
         const snapImg = card.querySelector('.snapshot-img');
-        if(snapImg){
+        if (snapImg) {
+          // Decide which proxy endpoint we should use depending on printer configuration
           const snapURL = printer.config.snapshot_url ? `snapshot/${slug}` : `camera/${slug}`;
-          if(snapURL){
-            snapImg.src = `${proxSnap}?_ts=${Date.now()}`;
-          }
+          // Bust cache so we always fetch a fresh frame
+          snapImg.src = `${snapURL}?_ts=${Date.now()}`;
         }
     }
     
@@ -595,18 +594,61 @@ class PrintFarmDashboard {
         const modal = document.getElementById('camera-modal');
         const img   = document.getElementById('camera-stream');
 
+        // Ensure crossorigin is set so that WKWebView/Safari will display MJPEG correctly
+        img.setAttribute('crossorigin', 'anonymous');
+
+        // Helper to clear any running snapshot timer
+        const cleanup = () => {
+            if (this.snapshotTimer) {
+                clearInterval(this.snapshotTimer);
+                this.snapshotTimer = null;
+            }
+        };
+
         // snapshot branch
-        if (printer.config.snapshot_url){
-            const load = ()=> img.src = `${proxSnap}?_ts=${Date.now()}`;
+        if (printer.config.snapshot_url) {
+            const load = () => img.src = `${proxSnap}?_ts=${Date.now()}`;
             load();
             this.snapshotTimer = setInterval(load, 1000);
-        }else{
+        } else {
+            // Try MJPEG stream first
             img.src = camProxy;
+
+            // Fallback: if the stream cannot be displayed (e.g., iOS WKWebView),
+            // switch to snapshot refresh mode after a short timeout.
+            const fallbackTimeout = setTimeout(() => {
+                // Only trigger fallback if the image size is still zero (not rendered)
+                if (img.naturalWidth === 0) {
+                    console.warn('MJPEG stream not rendering; falling back to snapshot mode');
+                    const load = () => img.src = `${camProxy}?snapshot&_ts=${Date.now()}`;
+                    load();
+                    this.snapshotTimer = setInterval(load, 1000);
+                }
+            }, 4000);
+
+            // Clear the timeout if image renders
+            img.onload = () => clearTimeout(fallbackTimeout);
+            img.onerror = () => {
+                // On error, switch to snapshot refresh
+                console.warn('Error loading MJPEG stream; switching to snapshot mode');
+                clearTimeout(fallbackTimeout);
+                const load = () => img.src = `${camProxy}?snapshot&_ts=${Date.now()}`;
+                load();
+                this.snapshotTimer = setInterval(load, 1000);
+            };
         }
 
         modal.style.display = 'flex';
-        modal.querySelector('.camera-close').onclick=()=>{modal.style.display='none'; img.src=''; if(this.snapshotTimer){clearInterval(this.snapshotTimer);this.snapshotTimer=null;}};
-        modal.onclick=(e)=>{if(e.target===modal){modal.style.display='none';img.src=''; if(this.snapshotTimer){clearInterval(this.snapshotTimer);this.snapshotTimer=null;}}};
+        const closeHandler = () => {
+            modal.style.display = 'none';
+            img.src = '';
+            cleanup();
+        };
+
+        modal.querySelector('.camera-close').onclick = closeHandler;
+        modal.onclick = (e) => {
+            if (e.target === modal) closeHandler();
+        };
     }
 }
 
