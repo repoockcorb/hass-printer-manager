@@ -616,9 +616,11 @@ def get_ha_camera_thumbnail_endpoint(entity_id):
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
     
-    # Detect if we're running under gunicorn
-    if "gunicorn" in os.environ.get("SERVER_SOFTWARE", ""):
-        logger.info("Running under gunicorn, app will be served by WSGI")
-    else:
-        logger.warning("Running standalone - this should only happen in development")
+    # Use waitress as a production WSGI server
+    try:
+        from waitress import serve
+        logger.info("Starting with Waitress production server...")
+        serve(app, host='127.0.0.1', port=5001, threads=4)
+    except ImportError:
+        logger.warning("Waitress not available, falling back to Flask dev server")
         app.run(host='127.0.0.1', port=5001, debug=False) 
