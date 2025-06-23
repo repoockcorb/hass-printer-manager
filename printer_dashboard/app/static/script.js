@@ -135,7 +135,8 @@ class PrintFarmDashboard {
     
     async loadPrinters() {
         try {
-            const response = await fetch('api/printers');
+            // Use enhanced API that auto-detects direct connection info
+            const response = await fetch('api/printers-enhanced');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -147,13 +148,18 @@ class PrintFarmDashboard {
                 return;
             }
             
-            // Initialize printer objects
+            // Initialize printer objects with enhanced config
             printerConfigs.forEach(config => {
                 this.printers.set(config.name, {
                     config: config,
                     status: null,
                     lastUpdate: null
                 });
+                
+                // Log direct connection info if available
+                if (config.uses_direct_control && DIRECT_CONTROL_CONFIG.debugLogging) {
+                    console.log(`🔧 ${config.name}: Auto-detected direct connection ${config.direct_host}:${config.direct_port}`);
+                }
             });
             
             this.hideLoading();
@@ -851,6 +857,55 @@ class PrintFarmDashboard {
         this.currentMovementPrinter = null;
     }
     
+    getDirectControlInfo(printerName) {
+        /**
+         * Check if a printer is using Home Assistant ingress and get direct connection info
+         * Returns null if no direct control needed, or {host, port} for direct control
+         */
+        const printer = this.printers.get(printerName);
+        if (!printer || !printer.config) return null;
+        
+        // Check if auto-detection is enabled
+        if (!DIRECT_CONTROL_CONFIG.enableAutoDetection) return null;
+        
+        const config = printer.config;
+        
+        // Only apply direct control for Klipper/Moonraker printers
+        if (config.type !== 'klipper') return null;
+        
+        // Check if the enhanced config indicates we should use direct control
+        if (config.uses_direct_control && config.direct_host && config.direct_port) {
+            if (DIRECT_CONTROL_CONFIG.debugLogging) {
+                console.log(`⚠️ Using direct control for ${printerName}`);
+                console.log(`📡 Direct connection: ${config.direct_host}:${config.direct_port}`);
+            }
+            
+            return {
+                host: config.direct_host,
+                port: config.direct_port,
+                api_key: config.api_key || null
+            };
+        }
+        
+        // Fallback: Check for ingress URL pattern (backward compatibility)
+        if (config.url && config.url.includes('/api/hassio_ingress/')) {
+            if (DIRECT_CONTROL_CONFIG.debugLogging) {
+                console.log(`⚠️ Detected ingress URL for ${printerName}: ${config.url}`);
+                console.log(`🔀 Using fallback direct control`);
+                console.log(`⚙️ Fallback connection: ${DIRECT_CONTROL_CONFIG.defaultHost}:${DIRECT_CONTROL_CONFIG.defaultPort}`);
+                console.log(`💡 Tip: Enhanced auto-detection failed - check network connectivity`);
+            }
+            
+            return {
+                host: DIRECT_CONTROL_CONFIG.defaultHost,
+                port: DIRECT_CONTROL_CONFIG.defaultPort,
+                api_key: config.api_key || null
+            };
+        }
+        
+        return null;
+    }
+
     showMovementModal(printerName) {
         const modal = document.getElementById('movement-modal');
         const title = document.getElementById('movement-modal-title');
@@ -889,22 +944,49 @@ class PrintFarmDashboard {
         if (!this.currentMovementPrinter) return;
         
         try {
-            // Prepare request data
-            const requestData = {};
-            if (axes && axes !== 'all') {
-                requestData.axes = [axes];
+            // Check if we need to use direct control
+            const directInfo = this.getDirectControlInfo(this.currentMovementPrinter);
+            
+            let response, requestData = {};
+            
+            if (directInfo) {
+                // Use direct control API
+                console.log(`🔀 Using direct control for ${this.currentMovementPrinter} home command`);
+                
+                if (axes && axes !== 'all') {
+                    requestData.axes = [axes];
+                }
+                if (directInfo.api_key) {
+                    requestData.api_key = directInfo.api_key;
+                }
+                
+                console.log(`Homing ${this.currentMovementPrinter} via direct API: ${axes || 'all axes'}`);
+                
+                response = await fetch(`api/direct-control/${directInfo.host}/${directInfo.port}/home`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+            } else {
+                // Use regular API
+                console.log(`📡 Using regular API for ${this.currentMovementPrinter} home command`);
+                
+                if (axes && axes !== 'all') {
+                    requestData.axes = [axes];
+                }
+                
+                console.log(`Homing ${this.currentMovementPrinter}: ${axes || 'all axes'}`);
+                
+                response = await fetch(`api/control/${this.currentMovementPrinter}/home`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
             }
-            // If axes is 'all' or null, don't send axes parameter (will home all)
-            
-            console.log(`Homing ${this.currentMovementPrinter}: ${axes || 'all axes'}`);
-            
-            const response = await fetch(`api/control/${this.currentMovementPrinter}/home`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(requestData)
-            });
             
             const result = await response.json();
             
@@ -926,18 +1008,48 @@ class PrintFarmDashboard {
         const distance = this.selectedDistance * direction;
         
         try {
-            console.log(`Jogging ${this.currentMovementPrinter}: ${axis}${distance > 0 ? '+' : ''}${distance}mm`);
+            // Check if we need to use direct control
+            const directInfo = this.getDirectControlInfo(this.currentMovementPrinter);
             
-            const response = await fetch(`api/control/${this.currentMovementPrinter}/jog`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
+            let response;
+            
+            if (directInfo) {
+                // Use direct control API
+                console.log(`🔀 Using direct control for ${this.currentMovementPrinter} jog command`);
+                
+                const requestData = {
                     axis: axis,
                     distance: distance
-                })
-            });
+                };
+                if (directInfo.api_key) {
+                    requestData.api_key = directInfo.api_key;
+                }
+                
+                console.log(`Jogging ${this.currentMovementPrinter} via direct API: ${axis}${distance > 0 ? '+' : ''}${distance}mm`);
+                
+                response = await fetch(`api/direct-control/${directInfo.host}/${directInfo.port}/jog`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+            } else {
+                // Use regular API
+                console.log(`📡 Using regular API for ${this.currentMovementPrinter} jog command`);
+                console.log(`Jogging ${this.currentMovementPrinter}: ${axis}${distance > 0 ? '+' : ''}${distance}mm`);
+                
+                response = await fetch(`api/control/${this.currentMovementPrinter}/jog`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        axis: axis,
+                        distance: distance
+                    })
+                });
+            }
             
             const result = await response.json();
             

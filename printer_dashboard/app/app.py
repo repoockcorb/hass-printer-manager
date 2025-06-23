@@ -1262,6 +1262,108 @@ def direct_test():
 </html>
     '''
 
+@app.route('/api/printers-enhanced')
+def get_printers_enhanced():
+    """API endpoint to get printer configurations with enhanced direct connection info"""
+    try:
+        printers_config = storage.get_printers()
+        enhanced_printers = []
+        
+        for printer_config in printers_config:
+            enhanced_config = printer_config.copy()
+            
+            # Try to auto-detect direct connection info for Klipper printers with ingress URLs
+            if (enhanced_config.get('type') == 'klipper' and 
+                enhanced_config.get('url') and 
+                '/api/hassio_ingress/' in enhanced_config.get('url')):
+                
+                # Try to extract direct connection info from various sources
+                direct_host, direct_port = extract_direct_connection_info(enhanced_config)
+                
+                if direct_host and direct_port:
+                    enhanced_config['direct_host'] = direct_host
+                    enhanced_config['direct_port'] = direct_port
+                    enhanced_config['uses_direct_control'] = True
+                    logger.info(f"Auto-detected direct connection for {enhanced_config['name']}: {direct_host}:{direct_port}")
+                else:
+                    enhanced_config['uses_direct_control'] = False
+                    logger.info(f"Could not auto-detect direct connection for {enhanced_config['name']}")
+            
+            enhanced_printers.append(enhanced_config)
+        
+        return jsonify(enhanced_printers)
+        
+    except Exception as e:
+        logger.error(f"Error getting enhanced printers: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def extract_direct_connection_info(printer_config):
+    """Try to extract direct Moonraker connection info from various sources"""
+    try:
+        # Method 1: Check if already configured
+        if printer_config.get('direct_host') and printer_config.get('direct_port'):
+            return printer_config['direct_host'], printer_config['direct_port']
+        
+        # Method 2: Check if there's a moonraker_url field
+        if printer_config.get('moonraker_url'):
+            return parse_url_for_host_port(printer_config['moonraker_url'])
+        
+        # Method 3: Try to ping common Moonraker ports on same network
+        # Extract network from HA URL if possible
+        ha_url = printer_config.get('url', '')
+        network_base = extract_network_base_from_ha_url(ha_url)
+        
+        if network_base:
+            # Try common IPs on the same network with port 7125
+            for i in range(200, 255):  # Common range for printers
+                test_host = f"{network_base}.{i}"
+                if test_moonraker_connection(test_host, 7125):
+                    logger.info(f"Found Moonraker at {test_host}:7125")
+                    return test_host, 7125
+        
+        # Method 4: Return None if nothing found
+        return None, None
+        
+    except Exception as e:
+        logger.error(f"Error extracting direct connection info: {e}")
+        return None, None
+
+def parse_url_for_host_port(url):
+    """Parse URL to extract host and port"""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port or 7125  # Default Moonraker port
+        return host, port
+    except Exception:
+        return None, None
+
+def extract_network_base_from_ha_url(ha_url):
+    """Extract network base (e.g., '192.168.1') from Home Assistant URL"""
+    try:
+        # Look for IP patterns in the URL
+        import re
+        ip_pattern = r'(\d+\.\d+\.\d+)\.\d+'
+        match = re.search(ip_pattern, ha_url)
+        if match:
+            return match.group(1)
+        return None
+    except Exception:
+        return None
+
+def test_moonraker_connection(host, port, timeout=1):
+    """Quick test to see if Moonraker is available at host:port"""
+    try:
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        result = sock.connect_ex((host, port))
+        sock.close()
+        return result == 0
+    except Exception:
+        return False
+
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
     app.run(host='127.0.0.1', port=5001, debug=False) 
