@@ -441,57 +441,75 @@ class HomeAssistantAPI:
             logger.error(f"Home Assistant request failed: {e}")
             return None
     
-    def get_camera_stream_url(self, entity_id):
-        """Get camera stream URL for entity"""
-        try:
-            # Use supervisor token directly for camera stream access
-            if self.token:
-                url = f"{self.url}/api/camera_proxy_stream/{entity_id}?token={self.token}"
-                logger.info(f"Camera stream URL for {entity_id}: {url}")
-                return url
-            else:
-                # Fallback to entity_picture method
-                entity_state = self._make_request(f'states/{entity_id}')
-                if not entity_state:
-                    return None
-                
-                entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-                if entity_picture:
-                    stream_url = entity_picture.replace('/api/camera_proxy/', '/api/camera_proxy_stream/')
-                    return f"{self.url}{stream_url}"
-                
-                return None
-            
-        except Exception as e:
-            logger.error(f"Error getting camera stream URL for {entity_id}: {e}")
-            return None
-    
     def get_camera_snapshot_url(self, entity_id):
-        """Get camera snapshot URL for entity"""
+        """Get camera snapshot URL for entity using HA's camera API"""
         try:
-            # Use supervisor token directly for camera access
-            if self.token:
-                url = f"{self.url}/api/camera_proxy/{entity_id}?token={self.token}"
-                logger.info(f"Camera snapshot URL for {entity_id}: {url}")
-                return url
-            else:
-                # Fallback to entity_picture method
-                entity_state = self._make_request(f'states/{entity_id}')
-                if not entity_state:
-                    logger.error(f"No entity state returned for {entity_id}")
-                    return None
+            # Use Home Assistant's camera API to get proper signed URL
+            camera_url_endpoint = f'camera_proxy/{entity_id}'
+            
+            # First, let's try to get the signed URL from HA's camera API
+            # This is how HA frontend gets camera URLs with proper authSig tokens
+            headers = {
+                'Authorization': f'Bearer {self.token}',
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache'
+            }
+            
+            # Request the camera URL - HA will generate a fresh authSig token
+            url = f"{self.url}/api/{camera_url_endpoint}"
+            
+            try:
+                response = requests.get(url, headers=headers, timeout=10, allow_redirects=False)
                 
+                # If we get a 200, use the URL directly
+                if response.status_code == 200:
+                    logger.info(f"Direct camera access successful for {entity_id}")
+                    return url
+                    
+                # If we get a redirect, use the redirect location
+                elif response.status_code in [301, 302, 307, 308] and 'Location' in response.headers:
+                    redirect_url = response.headers['Location']
+                    if redirect_url.startswith('/'):
+                        redirect_url = f"{self.url}{redirect_url}"
+                    logger.info(f"Camera redirect URL for {entity_id}: {redirect_url}")
+                    return redirect_url
+                    
+            except Exception as e:
+                logger.warning(f"Direct camera access failed for {entity_id}: {e}")
+            
+            # Fallback: Try to construct URL using entity state
+            entity_state = self._make_request(f'states/{entity_id}')
+            if entity_state:
                 entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
                 if entity_picture:
+                    # Use the entity_picture URL which should have current authSig
                     full_url = f"{self.url}{entity_picture}"
-                    logger.info(f"Camera snapshot URL (fallback) for {entity_id}: {full_url}")
+                    logger.info(f"Camera snapshot URL (entity_picture) for {entity_id}: {full_url}")
                     return full_url
-                else:
-                    logger.error(f"No entity_picture found for {entity_id}")
-                    return None
+            
+            logger.error(f"Failed to get camera URL for {entity_id}")
+            return None
             
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
+            return None
+    
+    def get_camera_stream_url(self, entity_id):
+        """Get camera stream URL for entity"""
+        try:
+            # For streams, we'll use the snapshot URL approach since streams 
+            # use the same token mechanism
+            snapshot_url = self.get_camera_snapshot_url(entity_id)
+            if snapshot_url and 'camera_proxy/' in snapshot_url:
+                # Convert snapshot to stream URL
+                stream_url = snapshot_url.replace('/api/camera_proxy/', '/api/camera_proxy_stream/')
+                logger.info(f"Camera stream URL for {entity_id}: {stream_url}")
+                return stream_url
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting camera stream URL for {entity_id}: {e}")
             return None
 
 # Initialize Home Assistant API
