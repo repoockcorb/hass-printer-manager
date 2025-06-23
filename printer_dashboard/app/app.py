@@ -91,22 +91,31 @@ class KlipperAPI(PrinterAPI):
                 }
             
             result = printer_objects.get('result', {})
-            print_stats = result.get('print_stats', {})
-            toolhead = result.get('toolhead', {})
-            extruder = result.get('extruder', {})
-            heater_bed = result.get('heater_bed', {})
-            display_status = result.get('display_status', {})
-            virtual_sdcard = result.get('virtual_sdcard', {})
-            webhooks = result.get('webhooks', {})
+            status_data = result.get('status', {}) if isinstance(result, dict) else {}
+            print_stats = status_data.get('print_stats', {})
+            toolhead = status_data.get('toolhead', {})
+            extruder = status_data.get('extruder', {})
+            heater_bed = status_data.get('heater_bed', {})
+            display_status = status_data.get('display_status', {})
+            virtual_sdcard = status_data.get('virtual_sdcard', {})
+            webhooks = status_data.get('webhooks', {})
+            
+            def safe_round(value, digits=1):
+                try:
+                    return round(float(value), digits)
+                except (TypeError, ValueError):
+                    return 0
             
             # Calculate progress
             progress = 0
-            if virtual_sdcard.get('progress'):
-                progress = round(virtual_sdcard['progress'] * 100, 1)
+            if virtual_sdcard.get('progress') not in [None, '']:
+                try:
+                    progress = round(float(virtual_sdcard['progress']) * 100, 1)
+                except (TypeError, ValueError):
+                    progress = 0
             
             # Get print time
-            print_duration = print_stats.get('print_duration', 0)
-            total_duration = print_stats.get('total_duration', 0)
+            print_duration = print_stats.get('print_duration', 0) or 0
             
             # Estimate remaining time
             remaining_time = 0
