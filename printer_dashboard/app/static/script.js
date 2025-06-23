@@ -263,7 +263,8 @@ class PrintFarmDashboard {
         // snapshot update
         const snapImg = card.querySelector('.snapshot-img');
         if(snapImg){
-          const snapURL = printer.config.snapshot_url || printer.config.camera_url?.replace('stream','snapshot');
+          const slug=printerName.toLowerCase().replace(/\s+/g,'_');
+          const snapURL = printer.config.snapshot_url || `camera/${slug}`;
           if(snapURL){
             snapImg.src = `${snapURL}${snapURL.includes('?')?'&':'?'}_ts=${Date.now()}`;
           }
@@ -590,7 +591,7 @@ class PrintFarmDashboard {
         const img = document.getElementById('camera-stream');
         const title=document.getElementById('camera-title');
         title.textContent=`${printerName} - Live Camera`;
-        img.src = camURL;
+        img.src = `camera/${printerName.toLowerCase().replace(/\s+/g,'_')}`;
         modal.style.display='flex';
         modal.querySelector('.camera-close').onclick=()=>{modal.style.display='none'; img.src='';};
         modal.onclick=(e)=>{if(e.target===modal){modal.style.display='none';img.src='';}};

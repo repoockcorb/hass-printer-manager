@@ -5,11 +5,12 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response, stream_with_context
 import requests
 from requests.exceptions import RequestException, Timeout
 import threading
 import time
+import urllib3
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -476,6 +477,27 @@ def debug_static():
         'working_directory': os.getcwd(),
         'static_path_exists': os.path.exists(static_path)
     })
+
+@app.route('/camera/<printer_name>')
+def proxy_camera(printer_name):
+    """Reverse-proxy the MJPEG camera stream to avoid mixed-content issues"""
+    printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
+    if not printer_cfg:
+        return jsonify({'error':'printer not found'}),404
+    cam_url = printer_cfg.get('camera_url')
+    if not cam_url:
+        return jsonify({'error':'camera_url not configured'}),404
+    try:
+        upstream = requests.get(cam_url, stream=True, timeout=10)
+        upstream.raise_for_status()
+    except Exception as e:
+        logger.error(f"Camera proxy error for {printer_name}: {e}")
+        return jsonify({'error':str(e)}),502
+    def generate():
+        for chunk in upstream.iter_content(chunk_size=1024):
+            if chunk:
+                yield chunk
+    return Response(stream_with_context(generate()), content_type=upstream.headers.get('Content-Type','multipart/x-mixed-replace; boundary=frame'))
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
