@@ -262,12 +262,13 @@ class PrintFarmDashboard {
         }
         
         // snapshot update
+        const slug=printerName.toLowerCase().replace(/\s+/g,'_');
+        const proxSnap=`snapshot/${slug}`;
         const snapImg = card.querySelector('.snapshot-img');
         if(snapImg){
-          const slug=printerName.toLowerCase().replace(/\s+/g,'_');
-          const snapURL = printer.config.snapshot_url || `camera/${slug}`;
+          const snapURL = printer.config.snapshot_url ? `snapshot/${slug}` : `camera/${slug}`;
           if(snapURL){
-            snapImg.src = `${snapURL}${snapURL.includes('?')?'&':'?'}_ts=${Date.now()}`;
+            snapImg.src = `${proxSnap}?_ts=${Date.now()}`;
           }
         }
     }
@@ -603,9 +604,9 @@ class PrintFarmDashboard {
             this.snapshotTimer=null;
         }
 
-        if(snapURL){
+        if(printer.config.snapshot_url){
             const loadSnapshot=()=>{
-                img.src = `${snapURL}${snapURL.includes('?')?'&':'?'}_ts=${Date.now()}`;
+                img.src = `${proxSnap}?_ts=${Date.now()}`;
             };
             loadSnapshot();
             this.snapshotTimer=setInterval(loadSnapshot,1000);

@@ -523,6 +523,26 @@ def proxy_camera(printer_name):
         direct_passthrough=True
     )
 
+@app.route('/snapshot/<printer_name>')
+def proxy_snapshot(printer_name):
+    """Proxy single snapshot image to avoid mixed-content"""
+    cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
+    if not cfg or not cfg.get('snapshot_url'):
+        return jsonify({'error':'snapshot_url not configured'}),404
+    try:
+        up = requests.get(cfg['snapshot_url'], timeout=10)
+        up.raise_for_status()
+    except Exception as exc:
+        logger.error(f"Snapshot proxy error for {printer_name}: {exc}")
+        return jsonify({'error':str(exc)}),502
+    return Response(up.content,
+                    content_type=up.headers.get('Content-Type','image/jpeg'),
+                    headers={
+                        'Cache-Control':'no-cache, no-store, must-revalidate',
+                        'Pragma':'no-cache',
+                        'Expires':'0'
+                    })
+
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
     app.run(host='127.0.0.1', port=5001, debug=False) 
