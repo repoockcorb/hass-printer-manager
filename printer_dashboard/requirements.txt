@@ -1,6 +1,6 @@
 flask==2.3.2
 requests==2.31.0
-flask-socketio==5.3.6
+flask-socketio==5.2.0
 python-socketio==5.8.0
 eventlet==0.33.3
 gunicorn==21.2.0 
