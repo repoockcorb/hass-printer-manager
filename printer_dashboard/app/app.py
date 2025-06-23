@@ -11,6 +11,8 @@ from requests.exceptions import RequestException, Timeout
 import threading
 import time
 import urllib3
+import base64
+import io
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -628,6 +630,125 @@ def proxy_snapshot(printer_name):
                         'Access-Control-Allow-Origin':'*',
                         'Access-Control-Allow-Headers':'*'
                     })
+
+@app.route('/camera-sse/<printer_name>')
+def camera_sse_stream(printer_name):
+    """Server-Sent Events stream for camera frames as base64 data"""
+    printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
+    if not printer_cfg:
+        return jsonify({'error':'printer not found'}), 404
+        
+    cam_url = printer_cfg.get('camera_url')
+    snapshot_url = printer_cfg.get('snapshot_url')
+    
+    if not cam_url and not snapshot_url:
+        return jsonify({'error':'no camera configured'}), 404
+    
+    def generate_frames():
+        """Generate base64-encoded frames for SSE"""
+        while True:
+            try:
+                frame_data = None
+                
+                if snapshot_url:
+                    # Use snapshot URL if available
+                    response = requests.get(snapshot_url, timeout=5, verify=False)
+                    if response.status_code == 200:
+                        frame_data = response.content
+                else:
+                    # Extract frame from MJPEG stream
+                    response = requests.get(cam_url, stream=True, timeout=5, verify=False)
+                    if response.status_code == 200:
+                        chunk_data = b''
+                        for chunk in response.iter_content(chunk_size=4096):
+                            chunk_data += chunk
+                            # Look for JPEG markers
+                            start_idx = chunk_data.find(b'\xff\xd8')
+                            end_idx = chunk_data.find(b'\xff\xd9')
+                            
+                            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                                frame_data = chunk_data[start_idx:end_idx+2]
+                                break
+                                
+                            if len(chunk_data) > 1024*1024:  # 1MB limit
+                                break
+                        response.close()
+                
+                if frame_data:
+                    # Convert to base64
+                    base64_frame = base64.b64encode(frame_data).decode('utf-8')
+                    yield f"data: data:image/jpeg;base64,{base64_frame}\n\n"
+                else:
+                    yield f"data: error\n\n"
+                    
+            except Exception as e:
+                logger.error(f"SSE camera error: {e}")
+                yield f"data: error\n\n"
+                
+            time.sleep(0.5)  # ~2 FPS to avoid overwhelming the client
+    
+    return Response(
+        generate_frames(),
+        content_type='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': '*'
+        }
+    )
+
+@app.route('/camera-canvas/<printer_name>')
+def camera_canvas_data(printer_name):
+    """REST endpoint that returns a single base64 frame for canvas rendering"""
+    printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
+    if not printer_cfg:
+        return jsonify({'error':'printer not found'}), 404
+        
+    cam_url = printer_cfg.get('camera_url')
+    snapshot_url = printer_cfg.get('snapshot_url')
+    
+    if not cam_url and not snapshot_url:
+        return jsonify({'error':'no camera configured'}), 404
+    
+    try:
+        frame_data = None
+        
+        if snapshot_url:
+            response = requests.get(snapshot_url, timeout=5, verify=False)
+            if response.status_code == 200:
+                frame_data = response.content
+        else:
+            # Extract single frame from MJPEG
+            response = requests.get(cam_url, stream=True, timeout=5, verify=False)
+            if response.status_code == 200:
+                chunk_data = b''
+                for chunk in response.iter_content(chunk_size=4096):
+                    chunk_data += chunk
+                    start_idx = chunk_data.find(b'\xff\xd8')
+                    end_idx = chunk_data.find(b'\xff\xd9')
+                    
+                    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                        frame_data = chunk_data[start_idx:end_idx+2]
+                        break
+                        
+                    if len(chunk_data) > 1024*1024:
+                        break
+                response.close()
+        
+        if frame_data:
+            base64_frame = base64.b64encode(frame_data).decode('utf-8')
+            return jsonify({
+                'success': True,
+                'data': f"data:image/jpeg;base64,{base64_frame}",
+                'timestamp': time.time()
+            })
+        else:
+            return jsonify({'success': False, 'error': 'No frame data'}), 502
+            
+    except Exception as e:
+        logger.error(f"Canvas camera error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 502
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")

@@ -594,99 +594,102 @@ class PrintFarmDashboard {
         const modal = document.getElementById('camera-modal');
         const img   = document.getElementById('camera-stream');
 
-        // Remove any existing crossorigin attribute as it may cause issues with WKWebView
-        img.removeAttribute('crossorigin');
+        // Clean up any existing connections
+        this.cleanupCamera();
         
-        // Try using a video element for better MJPEG support in WKWebView
-        const useVideoFallback = () => {
-            const video = document.createElement('video');
-            video.setAttribute('autoplay', '');
-            video.setAttribute('muted', '');
-            video.setAttribute('playsinline', '');
-            video.style.width = '100%';
-            video.style.height = 'auto';
-            video.style.borderRadius = '0 0 16px 16px';
+        // Try multiple approaches for HTTPS/WKWebView compatibility
+        this.currentCameraMethod = 'sse'; // Start with SSE
+        this.setupCameraStream(slug, modal, img);
+    }
+    
+    cleanupCamera() {
+        // Clear any timers
+        if (this.snapshotTimer) {
+            clearInterval(this.snapshotTimer);
+            this.snapshotTimer = null;
+        }
+        
+        // Close SSE connection
+        if (this.cameraEventSource) {
+            this.cameraEventSource.close();
+            this.cameraEventSource = null;
+        }
+    }
+    
+    setupCameraStream(slug, modal, img) {
+        const sseUrl = `camera-sse/${slug}`;
+        const canvasUrl = `camera-canvas/${slug}`;
+        const fallbackUrl = `snapshot/${slug}`;
+        
+        if (this.currentCameraMethod === 'sse') {
+            // Method 1: Server-Sent Events with base64 frames
+            console.log('Trying SSE camera stream...');
+            this.cameraEventSource = new EventSource(sseUrl);
             
-            // Replace img with video element
-            img.parentNode.replaceChild(video, img);
-            return video;
-        };
-
-        // Helper to clear any running snapshot timer
-        const cleanup = () => {
-            if (this.snapshotTimer) {
-                clearInterval(this.snapshotTimer);
-                this.snapshotTimer = null;
-            }
-        };
-
-        // snapshot branch
-        if (printer.config.snapshot_url) {
-            const load = () => img.src = `${proxSnap}?_ts=${Date.now()}`;
+            this.cameraEventSource.onmessage = (event) => {
+                if (event.data !== 'error') {
+                    img.src = event.data;
+                }
+            };
+            
+            this.cameraEventSource.onerror = () => {
+                console.warn('SSE failed, trying canvas method...');
+                this.cameraEventSource.close();
+                this.cameraEventSource = null;
+                this.currentCameraMethod = 'canvas';
+                setTimeout(() => this.setupCameraStream(slug, modal, img), 1000);
+            };
+            
+        } else if (this.currentCameraMethod === 'canvas') {
+            // Method 2: Canvas with REST API polling
+            console.log('Trying canvas camera method...');
+            
+            // Create canvas element to replace img
+            const canvas = document.createElement('canvas');
+            canvas.style.width = '100%';
+            canvas.style.height = 'auto';
+            canvas.style.borderRadius = '0 0 16px 16px';
+            img.parentNode.replaceChild(canvas, img);
+            
+            const ctx = canvas.getContext('2d');
+            
+            const updateCanvas = async () => {
+                try {
+                    const response = await fetch(canvasUrl);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        const tempImg = new Image();
+                        tempImg.onload = () => {
+                            canvas.width = tempImg.width;
+                            canvas.height = tempImg.height;
+                            ctx.drawImage(tempImg, 0, 0);
+                        };
+                        tempImg.src = data.data;
+                    }
+                } catch (error) {
+                    console.warn('Canvas method failed, switching to snapshot fallback...');
+                    this.currentCameraMethod = 'fallback';
+                    setTimeout(() => this.setupCameraStream(slug, modal, canvas), 1000);
+                    return;
+                }
+            };
+            
+            updateCanvas();
+            this.snapshotTimer = setInterval(updateCanvas, 500); // 2 FPS
+            
+        } else {
+            // Method 3: Simple snapshot refresh fallback
+            console.log('Using snapshot fallback...');
+            const load = () => img.src = `${fallbackUrl}?_ts=${Date.now()}`;
             load();
             this.snapshotTimer = setInterval(load, 1000);
-        } else {
-            // Progressive fallback strategy for MJPEG streams
-            let currentElement = img;
-            let fallbackAttempt = 0;
-            
-            const tryNextFallback = () => {
-                fallbackAttempt++;
-                console.warn(`MJPEG fallback attempt ${fallbackAttempt}`);
-                
-                if (fallbackAttempt === 1) {
-                    // Attempt 1: Try video element instead of img
-                    currentElement = useVideoFallback();
-                    currentElement.src = camProxy;
-                    
-                    // Set up error handler for video
-                    currentElement.onerror = () => setTimeout(tryNextFallback, 2000);
-                    
-                } else if (fallbackAttempt === 2) {
-                    // Attempt 2: Use blob URL approach
-                    fetch(camProxy)
-                        .then(response => response.blob())
-                        .then(blob => {
-                            const url = URL.createObjectURL(blob);
-                            currentElement.src = url;
-                            
-                            // Clean up blob URL after a while
-                            setTimeout(() => URL.revokeObjectURL(url), 30000);
-                        })
-                        .catch(() => setTimeout(tryNextFallback, 2000));
-                        
-                } else {
-                    // Final fallback: Snapshot refresh mode
-                    console.warn('All MJPEG methods failed; switching to snapshot refresh');
-                    const load = () => currentElement.src = `${camProxy}?snapshot&_ts=${Date.now()}`;
-                    load();
-                    this.snapshotTimer = setInterval(load, 1000);
-                }
-            };
-            
-            // Start with img element and MJPEG stream
-            img.src = camProxy;
-            
-            // Set up initial timeout for first fallback
-            const initialTimeout = setTimeout(() => {
-                if (img.naturalWidth === 0) {
-                    tryNextFallback();
-                }
-            }, 4000);
-            
-            // Clear timeout if image loads successfully
-            img.onload = () => clearTimeout(initialTimeout);
-            img.onerror = () => {
-                clearTimeout(initialTimeout);
-                tryNextFallback();
-            };
         }
 
         modal.style.display = 'flex';
         const closeHandler = () => {
             modal.style.display = 'none';
-            img.src = '';
-            cleanup();
+            this.cleanupCamera();
         };
 
         modal.querySelector('.camera-close').onclick = closeHandler;
