@@ -496,9 +496,18 @@ def proxy_camera(printer_name):
 
     # Determine proper Content-Type with boundary parameter so iOS/Android render MJPEG
     content_type = upstream.headers.get('Content-Type', 'multipart/x-mixed-replace')
-    if 'multipart' in content_type and 'boundary' not in content_type:
-        content_type = content_type + '; boundary=frame'
-
+    if 'multipart' in content_type:
+        content_type = 'multipart/x-mixed-replace; boundary=frame'
+    
+    response_headers = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Content-Encoding': 'identity'
+    }
+    
     def generate():
         try:
             for chunk in upstream.iter_content(chunk_size=4096):
@@ -510,12 +519,7 @@ def proxy_camera(printer_name):
     return Response(
         stream_with_context(generate()),
         content_type=content_type,
-        headers={
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-            'Connection': 'keep-alive'
-        },
+        headers=response_headers,
         direct_passthrough=True
     )
 
