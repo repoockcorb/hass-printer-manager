@@ -13,15 +13,24 @@ import time
 import urllib3
 import base64
 import io
+from flask_socketio import SocketIO, emit
+import uuid
+import json as json_lib
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
+app.config['SECRET_KEY'] = 'your-secret-key-here'
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Disable insecure request warnings globally (useful when upstream camera has self-signed certificate)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Store active camera streams
+active_streams = {}
+stream_threads = {}
 
 class PrinterAPI:
     """Base class for printer API interactions"""
@@ -750,6 +759,133 @@ def camera_canvas_data(printer_name):
         logger.error(f"Canvas camera error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 502
 
+# WebRTC Signaling Server
+@socketio.on('join_camera')
+def handle_join_camera(data):
+    """Handle client joining a camera stream"""
+    printer_name = data.get('printer_name')
+    client_id = data.get('client_id', str(uuid.uuid4()))
+    
+    logger.info(f"Client {client_id} joining camera stream for {printer_name}")
+    
+    # Store client info
+    if printer_name not in active_streams:
+        active_streams[printer_name] = {}
+    active_streams[printer_name][client_id] = request.sid
+    
+    # Start camera stream thread if not already running
+    if printer_name not in stream_threads:
+        thread = threading.Thread(target=camera_stream_worker, args=(printer_name,))
+        thread.daemon = True
+        thread.start()
+        stream_threads[printer_name] = thread
+    
+    emit('camera_joined', {'client_id': client_id, 'printer_name': printer_name})
+
+@socketio.on('leave_camera')
+def handle_leave_camera(data):
+    """Handle client leaving a camera stream"""
+    printer_name = data.get('printer_name')
+    client_id = data.get('client_id')
+    
+    logger.info(f"Client {client_id} leaving camera stream for {printer_name}")
+    
+    # Remove client
+    if printer_name in active_streams and client_id in active_streams[printer_name]:
+        del active_streams[printer_name][client_id]
+        
+        # If no more clients, stop the stream
+        if not active_streams[printer_name]:
+            del active_streams[printer_name]
+            if printer_name in stream_threads:
+                # Thread will stop when it sees no active streams
+                del stream_threads[printer_name]
+    
+    emit('camera_left', {'client_id': client_id, 'printer_name': printer_name})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Handle client disconnect - cleanup any streams"""
+    logger.info(f"Client {request.sid} disconnected")
+    
+    # Find and remove this client from all streams
+    for printer_name in list(active_streams.keys()):
+        for client_id in list(active_streams[printer_name].keys()):
+            if active_streams[printer_name][client_id] == request.sid:
+                del active_streams[printer_name][client_id]
+                
+        # Clean up empty streams
+        if not active_streams[printer_name]:
+            del active_streams[printer_name]
+            if printer_name in stream_threads:
+                del stream_threads[printer_name]
+
+def camera_stream_worker(printer_name):
+    """Background worker that streams camera frames via WebSocket"""
+    logger.info(f"Starting camera stream worker for {printer_name}")
+    
+    # Get printer config
+    printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
+    if not printer_cfg:
+        logger.error(f"Printer {printer_name} not found for camera stream")
+        return
+    
+    cam_url = printer_cfg.get('camera_url')
+    snapshot_url = printer_cfg.get('snapshot_url')
+    
+    if not cam_url and not snapshot_url:
+        logger.error(f"No camera configured for {printer_name}")
+        return
+    
+    while printer_name in active_streams and active_streams[printer_name]:
+        try:
+            frame_data = None
+            
+            if snapshot_url:
+                # Use snapshot URL for better reliability
+                response = requests.get(snapshot_url, timeout=5, verify=False)
+                if response.status_code == 200:
+                    frame_data = response.content
+            else:
+                # Extract frame from MJPEG stream
+                response = requests.get(cam_url, stream=True, timeout=5, verify=False)
+                if response.status_code == 200:
+                    chunk_data = b''
+                    for chunk in response.iter_content(chunk_size=4096):
+                        chunk_data += chunk
+                        start_idx = chunk_data.find(b'\xff\xd8')
+                        end_idx = chunk_data.find(b'\xff\xd9')
+                        
+                        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                            frame_data = chunk_data[start_idx:end_idx+2]
+                            break
+                            
+                        if len(chunk_data) > 1024*1024:
+                            break
+                    response.close()
+            
+            if frame_data:
+                # Convert to base64 and emit to all clients
+                base64_frame = base64.b64encode(frame_data).decode('utf-8')
+                data_uri = f"data:image/jpeg;base64,{base64_frame}"
+                
+                # Send to all connected clients for this printer
+                if printer_name in active_streams:
+                    for client_id, session_id in active_streams[printer_name].items():
+                        socketio.emit('camera_frame', {
+                            'printer_name': printer_name,
+                            'frame_data': data_uri,
+                            'timestamp': time.time()
+                        }, room=session_id)
+            
+        except Exception as e:
+            logger.error(f"Camera stream error for {printer_name}: {e}")
+        
+        # Control frame rate (2-3 FPS for efficiency)
+        time.sleep(0.4)
+    
+    logger.info(f"Camera stream worker stopped for {printer_name}")
+
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
-    app.run(host='127.0.0.1', port=5001, debug=False) 
+    socketio.run(app, host='127.0.0.1', port=5001, debug=False) 

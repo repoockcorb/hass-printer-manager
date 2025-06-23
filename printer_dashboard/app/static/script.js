@@ -9,15 +9,51 @@ class PrintFarmDashboard {
             type: 'all'
         };
         this.snapshotTimer = null;
+        this.socket = null;
+        this.cameraClientId = null;
+        this.currentCameraStream = null;
         
         this.init();
     }
     
     init() {
+        this.initializeSocket();
         this.setupEventListeners();
         this.showLoading();
         this.loadPrinters();
         this.startAutoUpdate();
+    }
+    
+    initializeSocket() {
+        // Initialize Socket.IO connection
+        this.socket = io();
+        
+        this.socket.on('connect', () => {
+            console.log('Connected to server');
+        });
+        
+        this.socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+        });
+        
+        this.socket.on('camera_joined', (data) => {
+            console.log('Joined camera stream:', data);
+            this.cameraClientId = data.client_id;
+        });
+        
+        this.socket.on('camera_frame', (data) => {
+            if (this.currentCameraStream === data.printer_name) {
+                const img = document.getElementById('camera-stream');
+                if (img) {
+                    img.src = data.frame_data;
+                }
+            }
+        });
+        
+        this.socket.on('camera_left', (data) => {
+            console.log('Left camera stream:', data);
+            this.cameraClientId = null;
+        });
     }
     
     setupEventListeners() {
@@ -588,103 +624,25 @@ class PrintFarmDashboard {
         if(!printer) return;
 
         const slug      = printerName.toLowerCase().replace(/\s+/g,'_');
-        const proxSnap  = `snapshot/${slug}`;        // <-- add
-        const camProxy  = `camera/${slug}`;          // for fallback
 
         const modal = document.getElementById('camera-modal');
         const img   = document.getElementById('camera-stream');
 
-        // Clean up any existing connections
+        // Clean up any existing camera streams
         this.cleanupCamera();
         
-        // Try multiple approaches for HTTPS/WKWebView compatibility
-        this.currentCameraMethod = 'sse'; // Start with SSE
-        this.setupCameraStream(slug, modal, img);
-    }
-    
-    cleanupCamera() {
-        // Clear any timers
-        if (this.snapshotTimer) {
-            clearInterval(this.snapshotTimer);
-            this.snapshotTimer = null;
-        }
+        // Set current stream and join via WebSocket
+        this.currentCameraStream = slug;
         
-        // Close SSE connection
-        if (this.cameraEventSource) {
-            this.cameraEventSource.close();
-            this.cameraEventSource = null;
-        }
-    }
-    
-    setupCameraStream(slug, modal, img) {
-        const sseUrl = `camera-sse/${slug}`;
-        const canvasUrl = `camera-canvas/${slug}`;
-        const fallbackUrl = `snapshot/${slug}`;
+        // Join camera stream via Socket.IO
+        this.socket.emit('join_camera', {
+            printer_name: slug,
+            client_id: this.generateClientId()
+        });
         
-        if (this.currentCameraMethod === 'sse') {
-            // Method 1: Server-Sent Events with base64 frames
-            console.log('Trying SSE camera stream...');
-            this.cameraEventSource = new EventSource(sseUrl);
-            
-            this.cameraEventSource.onmessage = (event) => {
-                if (event.data !== 'error') {
-                    img.src = event.data;
-                }
-            };
-            
-            this.cameraEventSource.onerror = () => {
-                console.warn('SSE failed, trying canvas method...');
-                this.cameraEventSource.close();
-                this.cameraEventSource = null;
-                this.currentCameraMethod = 'canvas';
-                setTimeout(() => this.setupCameraStream(slug, modal, img), 1000);
-            };
-            
-        } else if (this.currentCameraMethod === 'canvas') {
-            // Method 2: Canvas with REST API polling
-            console.log('Trying canvas camera method...');
-            
-            // Create canvas element to replace img
-            const canvas = document.createElement('canvas');
-            canvas.style.width = '100%';
-            canvas.style.height = 'auto';
-            canvas.style.borderRadius = '0 0 16px 16px';
-            img.parentNode.replaceChild(canvas, img);
-            
-            const ctx = canvas.getContext('2d');
-            
-            const updateCanvas = async () => {
-                try {
-                    const response = await fetch(canvasUrl);
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        const tempImg = new Image();
-                        tempImg.onload = () => {
-                            canvas.width = tempImg.width;
-                            canvas.height = tempImg.height;
-                            ctx.drawImage(tempImg, 0, 0);
-                        };
-                        tempImg.src = data.data;
-                    }
-                } catch (error) {
-                    console.warn('Canvas method failed, switching to snapshot fallback...');
-                    this.currentCameraMethod = 'fallback';
-                    setTimeout(() => this.setupCameraStream(slug, modal, canvas), 1000);
-                    return;
-                }
-            };
-            
-            updateCanvas();
-            this.snapshotTimer = setInterval(updateCanvas, 500); // 2 FPS
-            
-        } else {
-            // Method 3: Simple snapshot refresh fallback
-            console.log('Using snapshot fallback...');
-            const load = () => img.src = `${fallbackUrl}?_ts=${Date.now()}`;
-            load();
-            this.snapshotTimer = setInterval(load, 1000);
-        }
+        // Show loading state
+        img.src = '';
+        img.alt = 'Loading camera stream...';
 
         modal.style.display = 'flex';
         const closeHandler = () => {
@@ -696,6 +654,30 @@ class PrintFarmDashboard {
         modal.onclick = (e) => {
             if (e.target === modal) closeHandler();
         };
+    }
+    
+    cleanupCamera() {
+        // Leave current camera stream
+        if (this.currentCameraStream && this.socket) {
+            this.socket.emit('leave_camera', {
+                printer_name: this.currentCameraStream,
+                client_id: this.cameraClientId
+            });
+        }
+        
+        // Clear any timers
+        if (this.snapshotTimer) {
+            clearInterval(this.snapshotTimer);
+            this.snapshotTimer = null;
+        }
+        
+        // Reset state
+        this.currentCameraStream = null;
+        this.cameraClientId = null;
+    }
+    
+    generateClientId() {
+        return 'client_' + Math.random().toString(36).substr(2, 9);
     }
 }
 

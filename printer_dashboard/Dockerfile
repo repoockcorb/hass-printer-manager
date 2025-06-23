@@ -11,6 +11,10 @@ RUN apk add --no-cache \
     jq \
     bash
 
+# Install Python packages that aren't available in Alpine repos
+COPY requirements.txt /tmp/
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
+
 # Create app directory
 RUN mkdir -p /app
 
