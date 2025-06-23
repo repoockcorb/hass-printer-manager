@@ -404,26 +404,50 @@ class HomeAssistantAPI:
     """Home Assistant API integration for camera feeds"""
     
     def __init__(self, url=None, token=None):
-        self.url = (url or os.environ.get('SUPERVISOR_URL', 'http://supervisor/core')).rstrip('/')
+        # For internal API calls, use supervisor URL
+        self.internal_url = (url or os.environ.get('SUPERVISOR_URL', 'http://supervisor/core')).rstrip('/')
         self.token = token or os.environ.get('SUPERVISOR_TOKEN', '')
         
-        logger.info(f"HomeAssistantAPI initialized with URL: {self.url}")
+        # For camera URLs that browsers need to access, we need the external HA URL
+        # Try to determine the external URL from the request context
+        self.external_url = None
+        
+        logger.info(f"HomeAssistantAPI initialized with internal URL: {self.internal_url}")
         logger.info(f"Supervisor token available: {'Yes' if self.token else 'No'}")
         if self.token:
             logger.info(f"Supervisor token (first 10 chars): {self.token[:10]}...")
         else:
             logger.warning("No supervisor token available - camera access may fail")
+    
+    def _get_external_ha_url(self):
+        """Get the external Home Assistant URL that browsers can access"""
+        try:
+            # Try to get from Flask request context
+            from flask import request
+            if request:
+                # Extract the base URL from the current request
+                # Current request is like: http://100.95.242.53:8123/api/hassio_ingress/...
+                host = request.host  # Should be like 100.95.242.53:8123
+                scheme = request.scheme  # http or https
+                external_url = f"{scheme}://{host}"
+                logger.info(f"Detected external HA URL from request: {external_url}")
+                return external_url
+        except Exception as e:
+            logger.warning(f"Could not detect external HA URL from request: {e}")
         
+        # Fallback: assume standard HA port
+        return "http://homeassistant.local:8123"
+    
     def _make_request(self, endpoint, method='GET', timeout=10):
-        """Make HTTP request to Home Assistant API"""
+        """Make HTTP request to Home Assistant API using internal URL"""
         try:
             headers = {
                 'Authorization': f'Bearer {self.token}',
                 'Content-Type': 'application/json',
-                'Cache-Control': 'no-cache'  # Force fresh data
+                'Cache-Control': 'no-cache'
             }
             
-            url = f"{self.url}/api/{endpoint.lstrip('/')}"
+            url = f"{self.internal_url}/api/{endpoint.lstrip('/')}"
             
             # Add cache-busting parameter for state requests
             if 'states/' in endpoint:
@@ -448,7 +472,7 @@ class HomeAssistantAPI:
             
             # Use Home Assistant's camera API to generate proper signed URLs
             # This endpoint generates authSig JWT tokens like the HA frontend uses
-            camera_api_url = f"{self.url}/api/camera_proxy/{entity_id}"
+            camera_api_url = f"{self.internal_url}/api/camera_proxy/{entity_id}"
             
             headers = {
                 'Authorization': f'Bearer {self.token}',
@@ -469,19 +493,26 @@ class HomeAssistantAPI:
                 logger.info(f"Camera API response status: {response.status_code}")
                 logger.info(f"Camera API response headers: {dict(response.headers)}")
                 
+                # Get external URL for browser access
+                external_url = self._get_external_ha_url()
+                
                 # If HA redirects us to the signed URL, use that
                 if response.status_code in [301, 302, 307, 308] and 'Location' in response.headers:
                     redirect_url = response.headers['Location']
                     if redirect_url.startswith('/'):
-                        redirect_url = f"{self.url}{redirect_url}"
-                    logger.info(f"Camera redirect URL with authSig: {redirect_url}")
+                        # Convert internal URL to external URL
+                        redirect_url = f"{external_url}{redirect_url}"
+                    else:
+                        # Replace supervisor URL with external URL
+                        redirect_url = redirect_url.replace(self.internal_url, external_url)
+                    logger.info(f"Camera redirect URL with authSig (external): {redirect_url}")
                     return redirect_url
                 
                 # If we get 200, the URL itself should work
                 elif response.status_code == 200:
-                    # Build the URL with the same format HA uses
-                    final_url = f"{camera_api_url}?width=640&height=480"
-                    logger.info(f"Direct camera URL: {final_url}")
+                    # Build the URL with external URL that browser can access
+                    final_url = f"{external_url}/api/camera_proxy/{entity_id}?width=640&height=480"
+                    logger.info(f"Direct camera URL (external): {final_url}")
                     return final_url
                     
                 else:
@@ -490,14 +521,15 @@ class HomeAssistantAPI:
             except Exception as e:
                 logger.warning(f"Camera API request failed: {e}")
             
-            # Fallback: Try using entity_picture but modify format if needed
+            # Fallback: Try using entity_picture but convert to external URL
             entity_state = self._make_request(f'states/{entity_id}')
             if entity_state:
                 entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
                 if entity_picture:
-                    # Use entity_picture URL directly - it should have authSig format
-                    full_url = f"{self.url}{entity_picture}"
-                    logger.info(f"Camera URL from entity_picture: {full_url}")
+                    # Convert internal URL to external URL for browser access
+                    external_url = self._get_external_ha_url()
+                    full_url = f"{external_url}{entity_picture}"
+                    logger.info(f"Camera URL from entity_picture (external): {full_url}")
                     return full_url
             
             logger.error(f"Failed to get camera URL for {entity_id}")
