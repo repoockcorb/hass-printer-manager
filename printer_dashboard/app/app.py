@@ -89,12 +89,29 @@ class KlipperAPI(PrinterAPI):
             logger.info(f"{self.name} sending G-code via URL: {url}")
             
             response = requests.post(url, headers=headers, timeout=5)
+            logger.info(f"{self.name} G-code response status: {response.status_code}")
+            
+            # Check if the request was successful
             response.raise_for_status()
             
-            result = response.json() if response.text else {'ok': True}
-            logger.info(f"{self.name} G-code response: {result}")
+            # Parse response - Moonraker may return empty response for successful G-code
+            if response.text:
+                try:
+                    result = response.json()
+                    logger.info(f"{self.name} G-code response JSON: {result}")
+                except ValueError as e:
+                    logger.warning(f"{self.name} G-code response not JSON: {response.text}")
+                    result = {'status': 'ok', 'response_text': response.text}
+            else:
+                # Empty response is often success for G-code commands
+                logger.info(f"{self.name} G-code response empty (likely success)")
+                result = {'status': 'ok', 'response': 'empty'}
+            
             return result
             
+        except requests.exceptions.RequestException as e:
+            logger.error(f"{self.name} G-code HTTP request failed: {e}")
+            return None
         except Exception as e:
             logger.error(f"{self.name} G-code command failed: {e}")
             return None
@@ -220,7 +237,7 @@ class KlipperAPI(PrinterAPI):
                 logger.info(f"{self.name} homing {axis} axis: {gcode}")
             else:
                 logger.error(f"{self.name} invalid axis for homing: {axes}")
-                return None
+                return {'success': False, 'error': f'Invalid axis: {axes}'}
         elif isinstance(axes, list):
             # Home specific axes
             valid_axes = [ax.upper() for ax in axes if ax.upper() in ['X', 'Y', 'Z']]
@@ -229,27 +246,35 @@ class KlipperAPI(PrinterAPI):
                 logger.info(f"{self.name} homing axes {valid_axes}: {gcode}")
             else:
                 logger.error(f"{self.name} no valid axes for homing: {axes}")
-                return None
+                return {'success': False, 'error': f'No valid axes: {axes}'}
         else:
             logger.error(f"{self.name} invalid axes parameter: {axes}")
-            return None
+            return {'success': False, 'error': f'Invalid axes parameter: {axes}'}
         
         # Use the new _send_gcode method for Moonraker
         result = self._send_gcode(gcode)
-        return {'success': True, 'result': result} if result else {'success': False, 'error': 'G-code command failed'}
+        
+        # Check if the G-code was sent successfully
+        # Moonraker returns None on failure, but may return empty dict {} on success
+        if result is not None:
+            logger.info(f"{self.name} home command successful: {result}")
+            return {'success': True, 'result': result}
+        else:
+            logger.error(f"{self.name} home command failed")
+            return {'success': False, 'error': 'G-code command failed'}
     
     def jog_printer(self, axis, distance):
         """Jog printer in specified axis by distance (in mm)"""
         axis = axis.upper()
         if axis not in ['X', 'Y', 'Z']:
             logger.error(f"{self.name} invalid axis for jogging: {axis}")
-            return None
+            return {'success': False, 'error': f'Invalid axis: {axis}'}
             
         try:
             distance = float(distance)
         except (ValueError, TypeError):
             logger.error(f"{self.name} invalid distance for jogging: {distance}")
-            return None
+            return {'success': False, 'error': f'Invalid distance: {distance}'}
         
         # Use relative positioning with safer feedrate
         # G91: relative mode, G0: rapid move, G90: absolute mode
@@ -258,7 +283,15 @@ class KlipperAPI(PrinterAPI):
         
         # Use the new _send_gcode method for Moonraker
         result = self._send_gcode(gcode)
-        return {'success': True, 'result': result} if result else {'success': False, 'error': 'G-code command failed'}
+        
+        # Check if the G-code was sent successfully
+        # Moonraker returns None on failure, but may return empty dict {} on success
+        if result is not None:
+            logger.info(f"{self.name} jog command successful: {result}")
+            return {'success': True, 'result': result}
+        else:
+            logger.error(f"{self.name} jog command failed")
+            return {'success': False, 'error': 'G-code command failed'}
 
 class OctoPrintAPI(PrinterAPI):
     """OctoPrint API for OctoPrint printers"""
