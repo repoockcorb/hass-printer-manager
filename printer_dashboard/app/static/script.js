@@ -8,6 +8,7 @@ class PrintFarmDashboard {
             status: 'all',
             type: 'all'
         };
+        this.snapshotTimer = null;
         
         this.init();
     }
@@ -585,16 +586,35 @@ class PrintFarmDashboard {
     showCameraModal(printerName){
         const printer = this.printers.get(printerName);
         if(!printer) return;
-        const camURL = printer.config.camera_url;
-        if(!camURL){this.showNotification('No camera URL configured','error');return;}
+        const snapURL = printer.config.snapshot_url;
+        const camURL  = printer.config.camera_url;
+        if(!snapURL && !camURL){
+           this.showNotification('No camera or snapshot URL configured','error');
+           return;
+        }
         const modal = document.getElementById('camera-modal');
         const img = document.getElementById('camera-stream');
         const title=document.getElementById('camera-title');
         title.textContent=`${printerName} - Live Camera`;
-        img.src = `camera/${printerName.toLowerCase().replace(/\s+/g,'_')}`;
+
+        // clear previous timer if any
+        if(this.snapshotTimer){
+            clearInterval(this.snapshotTimer);
+            this.snapshotTimer=null;
+        }
+
+        if(snapURL){
+            const loadSnapshot=()=>{
+                img.src = `${snapURL}${snapURL.includes('?')?'&':'?'}_ts=${Date.now()}`;
+            };
+            loadSnapshot();
+            this.snapshotTimer=setInterval(loadSnapshot,1000);
+        }else{
+            img.src = `camera/${printerName.toLowerCase().replace(/\s+/g,'_')}`;
+        }
         modal.style.display='flex';
-        modal.querySelector('.camera-close').onclick=()=>{modal.style.display='none'; img.src='';};
-        modal.onclick=(e)=>{if(e.target===modal){modal.style.display='none';img.src='';}};
+        modal.querySelector('.camera-close').onclick=()=>{modal.style.display='none'; img.src=''; if(this.snapshotTimer){clearInterval(this.snapshotTimer);this.snapshotTimer=null;}};
+        modal.onclick=(e)=>{if(e.target===modal){modal.style.display='none';img.src=''; if(this.snapshotTimer){clearInterval(this.snapshotTimer);this.snapshotTimer=null;}}};
     }
 }
 
