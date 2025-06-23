@@ -442,29 +442,66 @@ class HomeAssistantAPI:
             return None
     
     def get_camera_snapshot_url(self, entity_id):
-        """Get camera snapshot URL for entity using entity_picture"""
+        """Get camera snapshot URL using HA's camera API for proper authSig tokens"""
         try:
             logger.info(f"Getting camera snapshot for entity: {entity_id}")
             
-            # Get entity state to get entity_picture
+            # Use Home Assistant's camera API to generate proper signed URLs
+            # This endpoint generates authSig JWT tokens like the HA frontend uses
+            camera_api_url = f"{self.url}/api/camera_proxy/{entity_id}"
+            
+            headers = {
+                'Authorization': f'Bearer {self.token}',
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache'
+            }
+            
+            # Add standard camera parameters
+            params = {
+                'width': 640,
+                'height': 480
+            }
+            
+            try:
+                # Make request to camera API - this should generate proper authSig token
+                response = requests.get(camera_api_url, headers=headers, params=params, timeout=10, allow_redirects=False)
+                
+                logger.info(f"Camera API response status: {response.status_code}")
+                logger.info(f"Camera API response headers: {dict(response.headers)}")
+                
+                # If HA redirects us to the signed URL, use that
+                if response.status_code in [301, 302, 307, 308] and 'Location' in response.headers:
+                    redirect_url = response.headers['Location']
+                    if redirect_url.startswith('/'):
+                        redirect_url = f"{self.url}{redirect_url}"
+                    logger.info(f"Camera redirect URL with authSig: {redirect_url}")
+                    return redirect_url
+                
+                # If we get 200, the URL itself should work
+                elif response.status_code == 200:
+                    # Build the URL with the same format HA uses
+                    final_url = f"{camera_api_url}?width=640&height=480"
+                    logger.info(f"Direct camera URL: {final_url}")
+                    return final_url
+                    
+                else:
+                    logger.warning(f"Unexpected response from camera API: {response.status_code}")
+                    
+            except Exception as e:
+                logger.warning(f"Camera API request failed: {e}")
+            
+            # Fallback: Try using entity_picture but modify format if needed
             entity_state = self._make_request(f'states/{entity_id}')
-            if not entity_state:
-                logger.error(f"No entity state returned for {entity_id}")
-                return None
+            if entity_state:
+                entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
+                if entity_picture:
+                    # Use entity_picture URL directly - it should have authSig format
+                    full_url = f"{self.url}{entity_picture}"
+                    logger.info(f"Camera URL from entity_picture: {full_url}")
+                    return full_url
             
-            logger.info(f"Entity state for {entity_id}: {entity_state}")
-            
-            # Get entity_picture which contains the proper camera URL with authSig
-            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-            if entity_picture:
-                # Use the entity_picture URL directly - it has the proper authSig token
-                full_url = f"{self.url}{entity_picture}"
-                logger.info(f"Camera snapshot URL for {entity_id}: {full_url}")
-                return full_url
-            else:
-                logger.error(f"No entity_picture found for {entity_id}")
-                logger.error(f"Entity attributes: {entity_state.get('attributes', {})}")
-                return None
+            logger.error(f"Failed to get camera URL for {entity_id}")
+            return None
                 
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
