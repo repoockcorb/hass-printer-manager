@@ -3,19 +3,13 @@
 import os
 import json
 import logging
-import asyncio
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, Response, stream_with_context
 import requests
 from requests.exceptions import RequestException, Timeout
-import threading
 import time
 import urllib3
 import base64
-import io
-from flask_socketio import SocketIO, emit
-import uuid
-import json as json_lib
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -24,22 +18,80 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = 'your-secret-key-here'
 
-# Initialize SocketIO with more robust configuration
-try:
-    import eventlet
-    eventlet.monkey_patch()
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', logger=True, engineio_logger=False)
-    logger.info("SocketIO initialized with eventlet async mode")
-except ImportError:
-    logger.warning("Eventlet not available, falling back to threading mode")
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logger=True, engineio_logger=False)
-
 # Disable insecure request warnings globally (useful when upstream camera has self-signed certificate)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Store active camera streams
-active_streams = {}
-stream_threads = {}
+# Home Assistant API configuration
+HA_API_BASE = "http://supervisor/core/api"
+HA_HEADERS = {}
+
+def init_ha_api():
+    """Initialize Home Assistant API headers"""
+    global HA_HEADERS
+    ha_token = os.environ.get('SUPERVISOR_TOKEN')
+    if ha_token:
+        HA_HEADERS = {
+            'Authorization': f'Bearer {ha_token}',
+            'Content-Type': 'application/json'
+        }
+        logger.info("Home Assistant API initialized")
+    else:
+        logger.warning("No SUPERVISOR_TOKEN found - HA API will not work")
+
+def get_ha_camera_entities():
+    """Get all camera entities from Home Assistant"""
+    try:
+        response = requests.get(f"{HA_API_BASE}/states", headers=HA_HEADERS, timeout=10)
+        if response.status_code == 200:
+            states = response.json()
+            cameras = [entity for entity in states if entity['entity_id'].startswith('camera.')]
+            logger.info(f"Found {len(cameras)} camera entities in HA")
+            return cameras
+        else:
+            logger.error(f"Failed to get HA states: {response.status_code}")
+            return []
+    except Exception as e:
+        logger.error(f"Error fetching HA camera entities: {e}")
+        return []
+
+def get_ha_camera_stream_url(entity_id):
+    """Get the stream URL for a specific camera entity"""
+    try:
+        # Call camera/create_stream service to get stream URL
+        response = requests.post(
+            f"{HA_API_BASE}/services/camera/create_stream",
+            headers=HA_HEADERS,
+            json={
+                "entity_id": entity_id
+            },
+            timeout=10
+        )
+        if response.status_code == 200:
+            result = response.json()
+            return result.get('url')
+        else:
+            logger.error(f"Failed to create stream for {entity_id}: {response.status_code}")
+            return None
+    except Exception as e:
+        logger.error(f"Error getting stream URL for {entity_id}: {e}")
+        return None
+
+def get_ha_camera_thumbnail(entity_id):
+    """Get thumbnail/snapshot from HA camera entity"""
+    try:
+        response = requests.get(
+            f"{HA_API_BASE}/camera_proxy/{entity_id}",
+            headers=HA_HEADERS,
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.content
+        else:
+            logger.error(f"Failed to get thumbnail for {entity_id}: {response.status_code}")
+            return None
+    except Exception as e:
+        logger.error(f"Error getting thumbnail for {entity_id}: {e}")
+        return None
 
 class PrinterAPI:
     """Base class for printer API interactions"""
@@ -395,6 +447,8 @@ class PrinterStorage:
     def __init__(self):
         self.config_file = '/data/options.json'
         logger.info(f"PrinterStorage initialized with config file: {self.config_file}")
+        # Initialize HA API
+        init_ha_api()
         self._load_printers()
     
     def _load_printers(self):
@@ -501,399 +555,63 @@ def debug_static():
         'static_path_exists': os.path.exists(static_path)
     })
 
-@app.route('/camera/<printer_name>')
-def proxy_camera(printer_name):
-    """Reverse-proxy the MJPEG camera stream to avoid mixed-content issues"""
-    # Check if this is a snapshot request instead of a stream
-    is_snapshot_request = request.args.get('snapshot') is not None
-    
-    printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
-    if not printer_cfg:
-        return jsonify({'error':'printer not found'}),404
-    cam_url = printer_cfg.get('camera_url')
-    if not cam_url:
-        return jsonify({'error':'camera_url not configured'}),404
-    
-    # If snapshot is requested but we have a dedicated snapshot_url, use that instead
-    if is_snapshot_request and printer_cfg.get('snapshot_url'):
-        return proxy_snapshot(printer_name)
-    
+@app.route('/api/ha-cameras')
+def get_ha_cameras():
+    """API endpoint to get all Home Assistant camera entities"""
     try:
-        # Accept self-signed certificates by skipping verification so the proxy still works over HTTPS.
-        headers = {}
-        if is_snapshot_request:
-            # For snapshot requests, we want a single JPEG frame
-            headers['Accept'] = 'image/jpeg'
-            
-        upstream = requests.get(cam_url, stream=True, timeout=10, verify=False)
-        upstream.raise_for_status()
-    except Exception as e:
-        logger.error(f"Camera proxy error for {printer_name}: {e}")
-        return jsonify({'error': str(e)}), 502
-
-    # Preserve upstream Content-Type when it already specifies a boundary.
-    content_type_header = upstream.headers.get('Content-Type', '') or ''
-
-    # Peek at the first chunk so we can sniff the boundary string if missing.
-    pre_buffer = b''
-    try:
-        pre_buffer = next(upstream.iter_content(chunk_size=2048))
-    except StopIteration:
-        pass  # Empty stream – we'll handle below
-
-    boundary_param = None
-
-    if 'multipart' in content_type_header.lower() and 'boundary=' in content_type_header.lower():
-        # Use upstream header as-is when boundary param present.
-        content_type = content_type_header
-    else:
-        # Try to detect boundary from the first chunk (it usually starts with --BOUNDARY) .
-        import re
-        m = re.match(rb'--([^\r\n; ]+)', pre_buffer)
-        if m:
-            boundary_param = m.group(1).decode('utf-8', 'ignore')
-        else:
-            boundary_param = 'frame'
-
-        # Ensure there is a space before boundary per RFC.
-        content_type = f'multipart/x-mixed-replace; boundary={boundary_param}'
-
-    response_headers = {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-        'Content-Encoding': 'identity',
-        # Allow embedding inside Home Assistant mobile (WKWebView) via relaxed CORS
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': '*'
-    }
-    
-    def generate():
-        try:
-            # Yield the pre-buffered bytes first (if any) so no data is lost.
-            if pre_buffer:
-                yield pre_buffer
-            # Stream the remaining content
-            for chunk in upstream.iter_content(chunk_size=4096):
-                if chunk:
-                    yield chunk
-        finally:
-            upstream.close()
-
-    # Handle snapshot requests differently
-    if is_snapshot_request:
-        # For snapshot mode, we return the first JPEG frame we can extract
-        try:
-            chunk_data = b''
-            for chunk in upstream.iter_content(chunk_size=4096):
-                chunk_data += chunk
-                # Look for JPEG start and end markers
-                start_idx = chunk_data.find(b'\xff\xd8')  # JPEG start
-                end_idx = chunk_data.find(b'\xff\xd9')    # JPEG end
-                
-                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                    # Extract the JPEG frame
-                    jpeg_data = chunk_data[start_idx:end_idx+2]
-                    return Response(
-                        jpeg_data,
-                        content_type='image/jpeg',
-                        headers={
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache',
-                            'Expires': '0',
-                            'Access-Control-Allow-Origin': '*',
-                            'Access-Control-Allow-Headers': '*'
-                        }
-                    )
-                    
-                # Prevent excessive buffering
-                if len(chunk_data) > 1024*1024:  # 1MB limit
-                    break
-                    
-        except Exception as e:
-            logger.error(f"Error extracting snapshot from stream: {e}")
-        finally:
-            upstream.close()
-            
-        # If we can't extract a frame, return an error
-        return jsonify({'error': 'Could not extract snapshot from stream'}), 502
-
-    return Response(
-        stream_with_context(generate()),
-        content_type=content_type,
-        headers=response_headers,
-        direct_passthrough=True
-    )
-
-@app.route('/snapshot/<printer_name>')
-def proxy_snapshot(printer_name):
-    """Proxy single snapshot image to avoid mixed-content"""
-    cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
-    if not cfg or not cfg.get('snapshot_url'):
-        return jsonify({'error':'snapshot_url not configured'}),404
-    try:
-        up = requests.get(cfg['snapshot_url'], timeout=10, verify=False)
-        up.raise_for_status()
-    except Exception as exc:
-        logger.error(f"Snapshot proxy error for {printer_name}: {exc}")
-        return jsonify({'error':str(exc)}),502
-    return Response(up.content,
-                    content_type=up.headers.get('Content-Type','image/jpeg'),
-                    headers={
-                        'Cache-Control':'no-cache, no-store, must-revalidate',
-                        'Pragma':'no-cache',
-                        'Expires':'0',
-                        'Access-Control-Allow-Origin':'*',
-                        'Access-Control-Allow-Headers':'*'
-                    })
-
-@app.route('/camera-sse/<printer_name>')
-def camera_sse_stream(printer_name):
-    """Server-Sent Events stream for camera frames as base64 data"""
-    printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
-    if not printer_cfg:
-        return jsonify({'error':'printer not found'}), 404
-        
-    cam_url = printer_cfg.get('camera_url')
-    snapshot_url = printer_cfg.get('snapshot_url')
-    
-    if not cam_url and not snapshot_url:
-        return jsonify({'error':'no camera configured'}), 404
-    
-    def generate_frames():
-        """Generate base64-encoded frames for SSE"""
-        while True:
-            try:
-                frame_data = None
-                
-                if snapshot_url:
-                    # Use snapshot URL if available
-                    response = requests.get(snapshot_url, timeout=5, verify=False)
-                    if response.status_code == 200:
-                        frame_data = response.content
-                else:
-                    # Extract frame from MJPEG stream
-                    response = requests.get(cam_url, stream=True, timeout=5, verify=False)
-                    if response.status_code == 200:
-                        chunk_data = b''
-                        for chunk in response.iter_content(chunk_size=4096):
-                            chunk_data += chunk
-                            # Look for JPEG markers
-                            start_idx = chunk_data.find(b'\xff\xd8')
-                            end_idx = chunk_data.find(b'\xff\xd9')
-                            
-                            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                                frame_data = chunk_data[start_idx:end_idx+2]
-                                break
-                                
-                            if len(chunk_data) > 1024*1024:  # 1MB limit
-                                break
-                        response.close()
-                
-                if frame_data:
-                    # Convert to base64
-                    base64_frame = base64.b64encode(frame_data).decode('utf-8')
-                    yield f"data: data:image/jpeg;base64,{base64_frame}\n\n"
-                else:
-                    yield f"data: error\n\n"
-                    
-            except Exception as e:
-                logger.error(f"SSE camera error: {e}")
-                yield f"data: error\n\n"
-                
-            time.sleep(0.5)  # ~2 FPS to avoid overwhelming the client
-    
-    return Response(
-        generate_frames(),
-        content_type='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': '*'
-        }
-    )
-
-@app.route('/camera-canvas/<printer_name>')
-def camera_canvas_data(printer_name):
-    """REST endpoint that returns a single base64 frame for canvas rendering"""
-    printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
-    if not printer_cfg:
-        return jsonify({'error':'printer not found'}), 404
-        
-    cam_url = printer_cfg.get('camera_url')
-    snapshot_url = printer_cfg.get('snapshot_url')
-    
-    if not cam_url and not snapshot_url:
-        return jsonify({'error':'no camera configured'}), 404
-    
-    try:
-        frame_data = None
-        
-        if snapshot_url:
-            response = requests.get(snapshot_url, timeout=5, verify=False)
-            if response.status_code == 200:
-                frame_data = response.content
-        else:
-            # Extract single frame from MJPEG
-            response = requests.get(cam_url, stream=True, timeout=5, verify=False)
-            if response.status_code == 200:
-                chunk_data = b''
-                for chunk in response.iter_content(chunk_size=4096):
-                    chunk_data += chunk
-                    start_idx = chunk_data.find(b'\xff\xd8')
-                    end_idx = chunk_data.find(b'\xff\xd9')
-                    
-                    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                        frame_data = chunk_data[start_idx:end_idx+2]
-                        break
-                        
-                    if len(chunk_data) > 1024*1024:
-                        break
-                response.close()
-        
-        if frame_data:
-            base64_frame = base64.b64encode(frame_data).decode('utf-8')
-            return jsonify({
-                'success': True,
-                'data': f"data:image/jpeg;base64,{base64_frame}",
-                'timestamp': time.time()
+        cameras = get_ha_camera_entities()
+        # Format for frontend consumption
+        formatted_cameras = []
+        for camera in cameras:
+            formatted_cameras.append({
+                'entity_id': camera['entity_id'],
+                'friendly_name': camera['attributes'].get('friendly_name', camera['entity_id']),
+                'state': camera['state'],
+                'model': camera['attributes'].get('model_name', 'Unknown'),
+                'brand': camera['attributes'].get('brand', 'Unknown')
             })
-        else:
-            return jsonify({'success': False, 'error': 'No frame data'}), 502
-            
+        return jsonify(formatted_cameras)
     except Exception as e:
-        logger.error(f"Canvas camera error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 502
+        logger.error(f"Error getting HA cameras: {e}")
+        return jsonify([]), 500
 
-# WebRTC Signaling Server
-@socketio.on('join_camera')
-def handle_join_camera(data):
-    """Handle client joining a camera stream"""
-    printer_name = data.get('printer_name')
-    client_id = data.get('client_id', str(uuid.uuid4()))
-    
-    logger.info(f"Client {client_id} joining camera stream for {printer_name}")
-    
-    # Store client info
-    if printer_name not in active_streams:
-        active_streams[printer_name] = {}
-    active_streams[printer_name][client_id] = request.sid
-    
-    # Start camera stream thread if not already running
-    if printer_name not in stream_threads:
-        thread = threading.Thread(target=camera_stream_worker, args=(printer_name,))
-        thread.daemon = True
-        thread.start()
-        stream_threads[printer_name] = thread
-    
-    emit('camera_joined', {'client_id': client_id, 'printer_name': printer_name})
+@app.route('/api/ha-camera-stream/<entity_id>')
+def get_ha_camera_stream_endpoint(entity_id):
+    """Get stream URL for a specific HA camera entity"""
+    try:
+        # Replace dots with underscores for URL safety, then back
+        entity_id = entity_id.replace('_', '.')
+        stream_url = get_ha_camera_stream_url(entity_id)
+        if stream_url:
+            return jsonify({'success': True, 'stream_url': stream_url})
+        else:
+            return jsonify({'success': False, 'error': 'Could not get stream URL'}), 404
+    except Exception as e:
+        logger.error(f"Error getting stream for {entity_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
-@socketio.on('leave_camera')
-def handle_leave_camera(data):
-    """Handle client leaving a camera stream"""
-    printer_name = data.get('printer_name')
-    client_id = data.get('client_id')
-    
-    logger.info(f"Client {client_id} leaving camera stream for {printer_name}")
-    
-    # Remove client
-    if printer_name in active_streams and client_id in active_streams[printer_name]:
-        del active_streams[printer_name][client_id]
-        
-        # If no more clients, stop the stream
-        if not active_streams[printer_name]:
-            del active_streams[printer_name]
-            if printer_name in stream_threads:
-                # Thread will stop when it sees no active streams
-                del stream_threads[printer_name]
-    
-    emit('camera_left', {'client_id': client_id, 'printer_name': printer_name})
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Handle client disconnect - cleanup any streams"""
-    logger.info(f"Client {request.sid} disconnected")
-    
-    # Find and remove this client from all streams
-    for printer_name in list(active_streams.keys()):
-        for client_id in list(active_streams[printer_name].keys()):
-            if active_streams[printer_name][client_id] == request.sid:
-                del active_streams[printer_name][client_id]
-                
-        # Clean up empty streams
-        if not active_streams[printer_name]:
-            del active_streams[printer_name]
-            if printer_name in stream_threads:
-                del stream_threads[printer_name]
-
-def camera_stream_worker(printer_name):
-    """Background worker that streams camera frames via WebSocket"""
-    logger.info(f"Starting camera stream worker for {printer_name}")
-    
-    # Get printer config
-    printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
-    if not printer_cfg:
-        logger.error(f"Printer {printer_name} not found for camera stream")
-        return
-    
-    cam_url = printer_cfg.get('camera_url')
-    snapshot_url = printer_cfg.get('snapshot_url')
-    
-    if not cam_url and not snapshot_url:
-        logger.error(f"No camera configured for {printer_name}")
-        return
-    
-    while printer_name in active_streams and active_streams[printer_name]:
-        try:
-            frame_data = None
-            
-            if snapshot_url:
-                # Use snapshot URL for better reliability
-                response = requests.get(snapshot_url, timeout=5, verify=False)
-                if response.status_code == 200:
-                    frame_data = response.content
-            else:
-                # Extract frame from MJPEG stream
-                response = requests.get(cam_url, stream=True, timeout=5, verify=False)
-                if response.status_code == 200:
-                    chunk_data = b''
-                    for chunk in response.iter_content(chunk_size=4096):
-                        chunk_data += chunk
-                        start_idx = chunk_data.find(b'\xff\xd8')
-                        end_idx = chunk_data.find(b'\xff\xd9')
-                        
-                        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                            frame_data = chunk_data[start_idx:end_idx+2]
-                            break
-                            
-                        if len(chunk_data) > 1024*1024:
-                            break
-                    response.close()
-            
-            if frame_data:
-                # Convert to base64 and emit to all clients
-                base64_frame = base64.b64encode(frame_data).decode('utf-8')
-                data_uri = f"data:image/jpeg;base64,{base64_frame}"
-                
-                # Send to all connected clients for this printer
-                if printer_name in active_streams:
-                    for client_id, session_id in active_streams[printer_name].items():
-                        socketio.emit('camera_frame', {
-                            'printer_name': printer_name,
-                            'frame_data': data_uri,
-                            'timestamp': time.time()
-                        }, room=session_id)
-            
-        except Exception as e:
-            logger.error(f"Camera stream error for {printer_name}: {e}")
-        
-        # Control frame rate (2-3 FPS for efficiency)
-        time.sleep(0.4)
-    
-    logger.info(f"Camera stream worker stopped for {printer_name}")
+@app.route('/api/ha-camera-thumbnail/<entity_id>')
+def get_ha_camera_thumbnail_endpoint(entity_id):
+    """Get thumbnail from HA camera entity"""
+    try:
+        # Replace underscores with dots for entity ID
+        entity_id = entity_id.replace('_', '.')
+        thumbnail_data = get_ha_camera_thumbnail(entity_id)
+        if thumbnail_data:
+            return Response(
+                thumbnail_data,
+                content_type='image/jpeg',
+                headers={
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                }
+            )
+        else:
+            return jsonify({'error': 'Could not get thumbnail'}), 404
+    except Exception as e:
+        logger.error(f"Error getting thumbnail for {entity_id}: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
@@ -903,12 +621,4 @@ if __name__ == '__main__':
         logger.info("Running under gunicorn, app will be served by WSGI")
     else:
         logger.warning("Running standalone - this should only happen in development")
-        try:
-            # Try to run with eventlet first
-            socketio.run(app, host='127.0.0.1', port=5001, debug=False, use_reloader=False)
-        except RuntimeError as e:
-            if "Werkzeug" in str(e):
-                logger.warning("Werkzeug warning detected, running with allow_unsafe_werkzeug=True")
-                socketio.run(app, host='127.0.0.1', port=5001, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
-            else:
-                raise 
+        app.run(host='127.0.0.1', port=5001, debug=False) 

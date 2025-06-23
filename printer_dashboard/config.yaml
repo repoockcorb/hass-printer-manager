@@ -26,8 +26,7 @@ schema:
       type: list(klipper|octoprint)
       url: url
       api_key: str?
-      camera_url: url?
-      snapshot_url: url? 
+      ha_camera_entity: str?
 
 
 # Let me know if you want to proceed with snapshot mode or explore a heavier HLS/WebRTC solution.

@@ -9,51 +9,15 @@ class PrintFarmDashboard {
             type: 'all'
         };
         this.snapshotTimer = null;
-        this.socket = null;
-        this.cameraClientId = null;
-        this.currentCameraStream = null;
         
         this.init();
     }
     
     init() {
-        this.initializeSocket();
         this.setupEventListeners();
         this.showLoading();
         this.loadPrinters();
         this.startAutoUpdate();
-    }
-    
-    initializeSocket() {
-        // Initialize Socket.IO connection
-        this.socket = io();
-        
-        this.socket.on('connect', () => {
-            console.log('Connected to server');
-        });
-        
-        this.socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-        });
-        
-        this.socket.on('camera_joined', (data) => {
-            console.log('Joined camera stream:', data);
-            this.cameraClientId = data.client_id;
-        });
-        
-        this.socket.on('camera_frame', (data) => {
-            if (this.currentCameraStream === data.printer_name) {
-                const img = document.getElementById('camera-stream');
-                if (img) {
-                    img.src = data.frame_data;
-                }
-            }
-        });
-        
-        this.socket.on('camera_left', (data) => {
-            console.log('Left camera stream:', data);
-            this.cameraClientId = null;
-        });
     }
     
     setupEventListeners() {
@@ -297,14 +261,16 @@ class PrintFarmDashboard {
             updateTime.textContent = this.formatRelativeTime(printer.lastUpdate);
         }
         
-        // snapshot update
-        const slug=printerName.toLowerCase().replace(/\s+/g,'_');
+        // Update snapshot if HA camera entity is configured
         const snapImg = card.querySelector('.snapshot-img');
-        if (snapImg) {
-          // Decide which proxy endpoint we should use depending on printer configuration
-          const snapURL = printer.config.snapshot_url ? `snapshot/${slug}` : `camera/${slug}`;
-          // Bust cache so we always fetch a fresh frame
-          snapImg.src = `${snapURL}?_ts=${Date.now()}`;
+        if (snapImg && printer.config.ha_camera_entity) {
+            const entityIdSafe = printer.config.ha_camera_entity.replace('.', '_');
+            const thumbnailUrl = `api/ha-camera-thumbnail/${entityIdSafe}?_ts=${Date.now()}`;
+            snapImg.src = thumbnailUrl;
+            snapImg.alt = 'Camera snapshot';
+        } else if (snapImg) {
+            snapImg.src = '';
+            snapImg.alt = 'No camera configured';
         }
     }
     
@@ -623,28 +589,61 @@ class PrintFarmDashboard {
         const printer = this.printers.get(printerName);
         if(!printer) return;
 
-        const slug      = printerName.toLowerCase().replace(/\s+/g,'_');
-
         const modal = document.getElementById('camera-modal');
         const img   = document.getElementById('camera-stream');
 
         // Clean up any existing camera streams
         this.cleanupCamera();
         
-        // Set current stream and join via WebSocket
-        this.currentCameraStream = slug;
+        // Check if printer has HA camera entity configured
+        if (printer.config.ha_camera_entity) {
+            this.setupHACameraStream(printer.config.ha_camera_entity, modal, img);
+        } else {
+            // No HA camera entity configured
+            img.src = '';
+            img.alt = 'No HA camera entity configured for this printer';
+            img.style.filter = 'grayscale(100%)';
+            modal.style.display = 'flex';
+            this.setupModalCloseHandlers(modal);
+        }
+    }
+    
+    setupHACameraStream(entityId, modal, img) {
+        console.log('Using Home Assistant camera entity:', entityId);
         
-        // Join camera stream via Socket.IO
-        this.socket.emit('join_camera', {
-            printer_name: slug,
-            client_id: this.generateClientId()
-        });
+        // Use HA camera thumbnail with refresh
+        const updateHACamera = async () => {
+            try {
+                const entityIdSafe = entityId.replace('.', '_');
+                const thumbnailUrl = `api/ha-camera-thumbnail/${entityIdSafe}?_ts=${Date.now()}`;
+                
+                // Test if thumbnail is available
+                const response = await fetch(thumbnailUrl);
+                if (response.ok) {
+                    img.src = thumbnailUrl;
+                    img.alt = 'HA Camera Feed';
+                    img.style.filter = '';
+                } else {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+            } catch (error) {
+                console.warn('HA camera thumbnail failed:', error);
+                img.alt = 'HA camera unavailable';
+                img.style.filter = 'grayscale(100%)';
+            }
+        };
         
-        // Show loading state
-        img.src = '';
-        img.alt = 'Loading camera stream...';
-
+        // Initial load
+        updateHACamera();
+        
+        // Refresh every 2 seconds (reasonable for HA camera)
+        this.snapshotTimer = setInterval(updateHACamera, 2000);
+        
         modal.style.display = 'flex';
+        this.setupModalCloseHandlers(modal);
+    }
+    
+    setupModalCloseHandlers(modal) {
         const closeHandler = () => {
             modal.style.display = 'none';
             this.cleanupCamera();
@@ -657,27 +656,19 @@ class PrintFarmDashboard {
     }
     
     cleanupCamera() {
-        // Leave current camera stream
-        if (this.currentCameraStream && this.socket) {
-            this.socket.emit('leave_camera', {
-                printer_name: this.currentCameraStream,
-                client_id: this.cameraClientId
-            });
-        }
-        
         // Clear any timers
         if (this.snapshotTimer) {
             clearInterval(this.snapshotTimer);
             this.snapshotTimer = null;
         }
         
-        // Reset state
-        this.currentCameraStream = null;
-        this.cameraClientId = null;
-    }
-    
-    generateClientId() {
-        return 'client_' + Math.random().toString(36).substr(2, 9);
+        // Reset camera element
+        const img = document.getElementById('camera-stream');
+        if (img) {
+            img.src = '';
+            img.alt = '';
+            img.style.filter = '';
+        }
     }
 }
 
