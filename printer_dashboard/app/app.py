@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 app.config['SECRET_KEY'] = 'your-secret-key-here'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', logger=True, engineio_logger=False)
 
 # Disable insecure request warnings globally (useful when upstream camera has self-signed certificate)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -888,4 +888,12 @@ def camera_stream_worker(printer_name):
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
-    socketio.run(app, host='127.0.0.1', port=5001, debug=False) 
+    try:
+        # Try to run with eventlet first
+        socketio.run(app, host='127.0.0.1', port=5001, debug=False, use_reloader=False)
+    except RuntimeError as e:
+        if "Werkzeug" in str(e):
+            logger.warning("Werkzeug warning detected, running with allow_unsafe_werkzeug=True")
+            socketio.run(app, host='127.0.0.1', port=5001, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
+        else:
+            raise 

@@ -18,7 +18,7 @@ mkdir -p /data
 # Function to handle shutdown gracefully
 shutdown() {
     echo "[INFO] Shutting down services..."
-    pkill -f "python3 app.py" || true
+    pkill -f "gunicorn" || true
     pkill nginx || true
     exit 0
 }
@@ -33,10 +33,8 @@ nginx &
 # Wait a moment for nginx to start
 sleep 2
 
-# Start the Flask application
+# Start Flask app with gunicorn for production WebSocket support
 echo "[INFO] Starting Print Farm Dashboard backend..."
 cd /app
-python3 app.py &
-
-# Wait for background processes
-wait 
+# Run gunicorn in foreground so the script doesn't exit
+exec gunicorn --worker-class eventlet -w 1 --bind 127.0.0.1:5001 --log-level info app:app 
