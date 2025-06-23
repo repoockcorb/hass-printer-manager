@@ -432,12 +432,19 @@ class HomeAssistantAPI:
     def get_camera_stream_url(self, entity_id):
         """Get camera stream URL for entity"""
         try:
-            # Get entity state to verify it exists
+            # Get entity state to get the camera's access token
             entity_state = self._make_request(f'states/{entity_id}')
             if not entity_state:
                 return None
-                
-            # Return the camera stream URL
+            
+            # Extract the access token from entity_picture
+            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
+            if 'token=' in entity_picture:
+                # Extract token from entity_picture URL
+                token = entity_picture.split('token=')[1]
+                return f"{self.url}/api/camera_proxy_stream/{entity_id}?token={token}"
+            
+            # Fallback to supervisor token
             return f"{self.url}/api/camera_proxy_stream/{entity_id}?token={self.token}"
             
         except Exception as e:
@@ -447,7 +454,21 @@ class HomeAssistantAPI:
     def get_camera_snapshot_url(self, entity_id):
         """Get camera snapshot URL for entity"""
         try:
+            # Get entity state to get the camera's access token
+            entity_state = self._make_request(f'states/{entity_id}')
+            if not entity_state:
+                return None
+            
+            # Extract the access token from entity_picture
+            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
+            if 'token=' in entity_picture:
+                # Extract token from entity_picture URL
+                token = entity_picture.split('token=')[1]
+                return f"{self.url}/api/camera_proxy/{entity_id}?token={token}"
+            
+            # Fallback to supervisor token
             return f"{self.url}/api/camera_proxy/{entity_id}?token={self.token}"
+            
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
             return None
@@ -544,6 +565,29 @@ def debug_static():
         'working_directory': os.getcwd(),
         'static_path_exists': os.path.exists(static_path)
     })
+
+@app.route('/debug/config')
+def debug_config():
+    """Debug endpoint to check printer configuration"""
+    try:
+        printers = storage.get_printers()
+        debug_info = {
+            'printer_count': len(printers),
+            'printers': []
+        }
+        
+        for printer in printers:
+            printer_info = {
+                'name': printer.get('name'),
+                'type': printer.get('type'),
+                'has_camera_entity': 'camera_entity' in printer,
+                'camera_entity': printer.get('camera_entity', 'Not configured')
+            }
+            debug_info['printers'].append(printer_info)
+        
+        return jsonify(debug_info)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/camera/<printer_name>/stream')
 def get_camera_stream(printer_name):
