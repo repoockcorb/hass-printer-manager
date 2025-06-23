@@ -626,29 +626,56 @@ class PrintFarmDashboard {
             // Get fresh snapshot URL
             const timestamp = Date.now();
             const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot?_=${timestamp}`);
+            
+            if (!snapshotResponse.ok) {
+                throw new Error(`API request failed: ${snapshotResponse.status} ${snapshotResponse.statusText}`);
+            }
+            
             const snapshotData = await snapshotResponse.json();
             
             console.log('API Response:', snapshotData); // Debug log
             
-            if (snapshotResponse.ok && snapshotData.snapshot_url) {
+            if (snapshotData.snapshot_url) {
                 // Use the snapshot URL directly without any modifications
                 const imageUrl = snapshotData.snapshot_url;
                 
                 console.log('Loading image from URL:', imageUrl); // Debug log
                 
+                // Test if the URL is accessible by making a fetch request
+                try {
+                    const imageResponse = await fetch(imageUrl, { 
+                        method: 'HEAD',  // Just check if URL is accessible
+                        mode: 'no-cors'  // Avoid CORS issues for testing
+                    });
+                    console.log('Image URL accessibility test:', imageResponse.status || 'no-cors success');
+                } catch (urlError) {
+                    console.error('Image URL not accessible:', urlError);
+                }
+                
                 stream.onload = () => {
                     loading.style.display = 'none';
                     stream.style.display = 'block';
                     error.style.display = 'none';
-                    console.log('Camera image loaded successfully'); // Debug log
+                    console.log('✅ Camera image loaded successfully at:', new Date().toLocaleTimeString()); // Debug log
                 };
                 
                 stream.onerror = (e) => {
                     loading.style.display = 'none';
                     error.style.display = 'flex';
                     error.querySelector('p').textContent = 'Failed to load camera image';
-                    console.error('Camera image failed to load:', e); // Debug log
+                    console.error('❌ Camera image failed to load:', e); // Debug log
                     console.error('Failed URL:', imageUrl); // Debug log
+                    console.error('Current time:', new Date().toLocaleTimeString());
+                    
+                    // Try to get more details about the failure
+                    fetch(imageUrl, { method: 'HEAD' })
+                        .then(response => {
+                            console.error('HEAD request status:', response.status, response.statusText);
+                            console.error('HEAD request headers:', Object.fromEntries(response.headers.entries()));
+                        })
+                        .catch(fetchError => {
+                            console.error('HEAD request failed:', fetchError);
+                        });
                 };
                 
                 // Set the image source directly
@@ -657,7 +684,7 @@ class PrintFarmDashboard {
                 // Start auto-refresh to get fresh images
                 this.startCameraRefresh();
             } else {
-                throw new Error(snapshotData.error || 'Failed to get camera snapshot');
+                throw new Error(snapshotData.error || 'No snapshot_url in response');
             }
         } catch (err) {
             console.error('Error loading camera feed:', err);
