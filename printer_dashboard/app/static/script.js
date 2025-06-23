@@ -870,8 +870,8 @@ class PrintFarmDashboard {
     
     getDirectControlInfo(printerName) {
         /**
-         * Check if a printer needs direct control and extract connection info from existing URL
-         * Returns null if no direct control needed, or {host, port} for direct control
+         * Check if a Klipper printer needs direct control and extract connection info from existing URL
+         * Returns null if no direct control needed (OctoPrint or direct access), or {host, port} for Klipper direct control
          */
         const printer = this.printers.get(printerName);
         if (!printer || !printer.config) return null;
@@ -881,13 +881,21 @@ class PrintFarmDashboard {
         
         const config = printer.config;
         
-        // Only apply direct control for Klipper/Moonraker printers or when accessed through ingress
+        // Only apply direct control for Klipper/Moonraker printers
         const isKlipper = config.type === 'klipper';
+        
+        // Don't use direct control for OctoPrint - let it use the original API
+        if (!isKlipper) {
+            if (DIRECT_CONTROL_CONFIG.debugLogging) {
+                console.log(`📡 ${printerName} (${config.type}): Using original API (not Klipper)`);
+            }
+            return null;
+        }
+        
+        // For Klipper printers, check if we're accessing through ingress
         const isIngressAccess = window.location.href.includes('/api/hassio_ingress/');
         
-        if (!isKlipper && !isIngressAccess) return null;
-        
-        // Extract host and port from the configured URL
+        // Extract host and port from the configured URL for Klipper printers
         try {
             const url = new URL(config.url);
             const host = url.hostname;
@@ -897,7 +905,7 @@ class PrintFarmDashboard {
             const moonrakerPort = url.port || (url.protocol === 'http:' ? 7125 : port);
             
             if (DIRECT_CONTROL_CONFIG.debugLogging) {
-                console.log(`⚠️ Using direct control for ${printerName}`);
+                console.log(`⚠️ Using direct control for ${printerName} (Klipper)`);
                 console.log(`📋 Extracted from config URL: ${config.url}`);
                 console.log(`📡 Direct connection: ${host}:${moonrakerPort}`);
                 console.log(`🔗 Access method: ${isIngressAccess ? 'Home Assistant Ingress' : 'Direct'}`);
