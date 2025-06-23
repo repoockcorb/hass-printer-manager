@@ -627,25 +627,35 @@ class PrintFarmDashboard {
         // Strategy 2: Check URL patterns to detect HA context
         const currentUrl = window.location.href;
         const isHAIngress = currentUrl.includes('/api/hassio_ingress/') || currentUrl.includes('/hassio_ingress/');
+        const isNabuCasa = currentUrl.includes('.ui.nabu.casa');
         
         let baseUrl = window.location.origin;
         
-        // Strategy 3: If we're in HA ingress or mobile app, try to extract the external HA URL
+        // Strategy 3: Force HTTPS for Nabu Casa cloud access
+        if (isNabuCasa && baseUrl.startsWith('http://')) {
+            baseUrl = baseUrl.replace('http://', 'https://');
+            console.log(`Forced HTTPS for Nabu Casa: ${baseUrl}`);
+        }
+        
+        // Strategy 4: If we're in HA ingress or mobile app, try to extract the external HA URL
         if (isHAIngress || isHAApp) {
             // Try to get the HA base URL from the current URL
-            // Example: http://100.95.242.53:8123/api/hassio_ingress/abc123/
-            // Should become: http://100.95.242.53:8123
+            // Example: https://abc123.ui.nabu.casa/api/hassio_ingress/xyz/
+            // Should become: https://abc123.ui.nabu.casa
             
             const urlParts = currentUrl.split('/');
             if (urlParts.length >= 3) {
-                // Get protocol and host (first 3 parts: http:, '', host:port)
-                const protocol = urlParts[0]; // http: or https:
-                const host = urlParts[2]; // host:port
-                baseUrl = `${protocol}//${host}`;
+                // Get protocol and host (first 3 parts: https:, '', host)
+                const protocol = urlParts[0]; // https: or http:
+                const host = urlParts[2]; // host:port or nabu.casa domain
+                
+                // Force HTTPS for cloud/external access
+                const finalProtocol = (isNabuCasa || host.includes('.ui.nabu.casa')) ? 'https:' : protocol;
+                baseUrl = `${finalProtocol}//${host}`;
                 console.log(`Detected HA context, using base URL: ${baseUrl}`);
             }
             
-            // Strategy 4: For mobile app or complex scenarios, ask the backend for help
+            // Strategy 5: For mobile app or complex scenarios, ask the backend for help
             try {
                 const haInfoResponse = await fetch('api/ha-info');
                 if (haInfoResponse.ok) {
@@ -656,8 +666,15 @@ class PrintFarmDashboard {
                     const suggestedUrls = haInfo.suggested_base_urls || [];
                     for (const suggestedUrl of suggestedUrls) {
                         if (suggestedUrl && suggestedUrl.trim() && suggestedUrl !== baseUrl) {
-                            baseUrl = suggestedUrl.trim();
-                            console.log(`Using backend suggested base URL: ${baseUrl}`);
+                            let finalSuggestedUrl = suggestedUrl.trim();
+                            
+                            // Force HTTPS for Nabu Casa URLs
+                            if (finalSuggestedUrl.includes('.ui.nabu.casa') && finalSuggestedUrl.startsWith('http://')) {
+                                finalSuggestedUrl = finalSuggestedUrl.replace('http://', 'https://');
+                            }
+                            
+                            baseUrl = finalSuggestedUrl;
+                            console.log(`Using backend suggested base URL (HTTPS enforced): ${baseUrl}`);
                             break;
                         }
                     }
@@ -671,6 +688,7 @@ class PrintFarmDashboard {
             userAgent: userAgent,
             isHAApp: isHAApp,
             isHAIngress: isHAIngress,
+            isNabuCasa: isNabuCasa,
             currentUrl: currentUrl,
             detectedBaseUrl: baseUrl
         });
@@ -781,7 +799,7 @@ class PrintFarmDashboard {
         // Refresh every 500ms for very fast camera updates
         this.cameraRefreshInterval = setInterval(() => {
             this.loadCameraFeed();
-        }, 500); // Very fast refresh to test token expiration
+        }, 3000); // Very fast refresh to test token expiration
     }
     
     stopCameraRefresh() {

@@ -423,6 +423,11 @@ class HomeAssistantAPI:
         """Get the external Home Assistant URL that browsers can access"""
         if base_url:
             # Use the provided base URL from the frontend
+            # But force HTTPS for Nabu Casa cloud URLs
+            if '.ui.nabu.casa' in base_url and base_url.startswith('http://'):
+                base_url = base_url.replace('http://', 'https://')
+                logger.info(f"Forced HTTPS for Nabu Casa URL: {base_url}")
+            
             logger.info(f"Using provided base URL: {base_url}")
             return base_url.rstrip('/')
             
@@ -431,9 +436,14 @@ class HomeAssistantAPI:
             from flask import request
             if request:
                 # Extract the base URL from the current request
-                # Current request is like: http://100.95.242.53:8123/api/hassio_ingress/...
-                host = request.host  # Should be like 100.95.242.53:8123
-                scheme = request.scheme  # http or https
+                host = request.host
+                scheme = request.scheme
+                
+                # Force HTTPS for Nabu Casa domains
+                if '.ui.nabu.casa' in host:
+                    scheme = 'https'
+                    logger.info(f"Forced HTTPS for Nabu Casa domain: {host}")
+                
                 external_url = f"{scheme}://{host}"
                 logger.info(f"Detected external HA URL from request: {external_url}")
                 return external_url
@@ -651,14 +661,34 @@ def get_ha_info():
         except Exception as e:
             logger.warning(f"Could not get HA config info: {e}")
         
+        # Build suggested URLs, ensuring HTTPS for Nabu Casa
+        suggested_urls = []
+        
+        # Current request base
+        current_base = f"{request.scheme}://{request.host}"
+        if '.ui.nabu.casa' in request.host and request.scheme == 'http':
+            current_base = f"https://{request.host}"
+        suggested_urls.append(current_base)
+        
+        # Origin header
+        origin = request.headers.get('Origin', '')
+        if origin:
+            if '.ui.nabu.casa' in origin and origin.startswith('http://'):
+                origin = origin.replace('http://', 'https://')
+            suggested_urls.append(origin)
+        
+        # Detected HA URL
+        detected_url = ha_config.get('detected_external_url', '')
+        if detected_url:
+            suggested_urls.append(detected_url)
+        
+        # Remove duplicates and empty strings
+        suggested_urls = list(dict.fromkeys([url for url in suggested_urls if url]))
+        
         return jsonify({
             'request_info': request_info,
             'ha_config': ha_config,
-            'suggested_base_urls': [
-                f"{request.scheme}://{request.host}",  # Current request base
-                request.headers.get('Origin', ''),     # Origin header
-                ha_config.get('detected_external_url', ''),  # Detected HA URL
-            ]
+            'suggested_base_urls': suggested_urls
         })
         
     except Exception as e:
