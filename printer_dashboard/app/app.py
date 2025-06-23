@@ -442,56 +442,34 @@ class HomeAssistantAPI:
             return None
     
     def get_camera_snapshot_url(self, entity_id):
-        """Get camera snapshot URL for entity using HA's camera API"""
+        """Get camera snapshot URL for entity using entity_picture"""
         try:
-            # Use Home Assistant's camera API to get proper signed URL
-            camera_url_endpoint = f'camera_proxy/{entity_id}'
+            logger.info(f"Getting camera snapshot for entity: {entity_id}")
             
-            # First, let's try to get the signed URL from HA's camera API
-            # This is how HA frontend gets camera URLs with proper authSig tokens
-            headers = {
-                'Authorization': f'Bearer {self.token}',
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-cache'
-            }
-            
-            # Request the camera URL - HA will generate a fresh authSig token
-            url = f"{self.url}/api/{camera_url_endpoint}"
-            
-            try:
-                response = requests.get(url, headers=headers, timeout=10, allow_redirects=False)
-                
-                # If we get a 200, use the URL directly
-                if response.status_code == 200:
-                    logger.info(f"Direct camera access successful for {entity_id}")
-                    return url
-                    
-                # If we get a redirect, use the redirect location
-                elif response.status_code in [301, 302, 307, 308] and 'Location' in response.headers:
-                    redirect_url = response.headers['Location']
-                    if redirect_url.startswith('/'):
-                        redirect_url = f"{self.url}{redirect_url}"
-                    logger.info(f"Camera redirect URL for {entity_id}: {redirect_url}")
-                    return redirect_url
-                    
-            except Exception as e:
-                logger.warning(f"Direct camera access failed for {entity_id}: {e}")
-            
-            # Fallback: Try to construct URL using entity state
+            # Get entity state to get entity_picture
             entity_state = self._make_request(f'states/{entity_id}')
-            if entity_state:
-                entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-                if entity_picture:
-                    # Use the entity_picture URL which should have current authSig
-                    full_url = f"{self.url}{entity_picture}"
-                    logger.info(f"Camera snapshot URL (entity_picture) for {entity_id}: {full_url}")
-                    return full_url
+            if not entity_state:
+                logger.error(f"No entity state returned for {entity_id}")
+                return None
             
-            logger.error(f"Failed to get camera URL for {entity_id}")
-            return None
+            logger.info(f"Entity state for {entity_id}: {entity_state}")
             
+            # Get entity_picture which contains the proper camera URL with authSig
+            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
+            if entity_picture:
+                # Use the entity_picture URL directly - it has the proper authSig token
+                full_url = f"{self.url}{entity_picture}"
+                logger.info(f"Camera snapshot URL for {entity_id}: {full_url}")
+                return full_url
+            else:
+                logger.error(f"No entity_picture found for {entity_id}")
+                logger.error(f"Entity attributes: {entity_state.get('attributes', {})}")
+                return None
+                
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
     def get_camera_stream_url(self, entity_id):
@@ -656,24 +634,36 @@ def get_camera_stream(printer_name):
 def get_camera_snapshot(printer_name):
     """API endpoint to get camera snapshot URL for a printer"""
     try:
+        logger.info(f"Camera snapshot request for printer: {printer_name}")
+        
         printers = storage.get_printers()
         printer_config = next((p for p in printers if p['name'] == printer_name), None)
         
         if not printer_config:
+            logger.error(f"Printer not found: {printer_name}")
+            logger.info(f"Available printers: {[p.get('name') for p in printers]}")
             return jsonify({'error': 'Printer not found'}), 404
         
         camera_entity = printer_config.get('camera_entity')
         if not camera_entity:
+            logger.error(f"No camera entity configured for printer: {printer_name}")
+            logger.info(f"Printer config: {printer_config}")
             return jsonify({'error': 'No camera entity configured for this printer'}), 404
+        
+        logger.info(f"Using camera entity: {camera_entity}")
         
         snapshot_url = ha_api.get_camera_snapshot_url(camera_entity)
         if not snapshot_url:
+            logger.error(f"Failed to get snapshot URL for camera entity: {camera_entity}")
             return jsonify({'error': 'Camera snapshot not available'}), 404
         
+        logger.info(f"Returning snapshot URL: {snapshot_url}")
         return jsonify({'snapshot_url': snapshot_url})
         
     except Exception as e:
         logger.error(f"Error getting camera snapshot for {printer_name}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
