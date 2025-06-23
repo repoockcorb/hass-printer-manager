@@ -684,10 +684,10 @@ class PrintFarmDashboard {
     
     startCameraRefresh() {
         this.stopCameraRefresh();
-        // Refresh every 3 seconds to get fresh tokens and images
+        // Refresh every 500ms for very fast camera updates
         this.cameraRefreshInterval = setInterval(() => {
             this.loadCameraFeed();
-        }, 3000);
+        }, 500); // Very fast refresh to test token expiration
     }
     
     stopCameraRefresh() {
