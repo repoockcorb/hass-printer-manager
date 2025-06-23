@@ -419,8 +419,13 @@ class HomeAssistantAPI:
         else:
             logger.warning("No supervisor token available - camera access may fail")
     
-    def _get_external_ha_url(self):
+    def _get_external_ha_url(self, base_url=None):
         """Get the external Home Assistant URL that browsers can access"""
+        if base_url:
+            # Use the provided base URL from the frontend
+            logger.info(f"Using provided base URL: {base_url}")
+            return base_url.rstrip('/')
+            
         try:
             # Try to get from Flask request context
             from flask import request
@@ -465,10 +470,14 @@ class HomeAssistantAPI:
             logger.error(f"Home Assistant request failed: {e}")
             return None
     
-    def get_camera_snapshot_url(self, entity_id):
+    def get_camera_snapshot_url(self, entity_id, base_url=None):
         """Get camera snapshot URL with proper authSig JWT tokens"""
         try:
             logger.info(f"Getting camera snapshot for entity: {entity_id}")
+            if base_url:
+                logger.info(f"Using dynamic base URL from frontend: {base_url}")
+            else:
+                logger.info("No base URL provided, will auto-detect from request context")
             
             # First, get the entity_picture which contains the properly signed URL
             entity_state = self._make_request(f'states/{entity_id}')
@@ -485,7 +494,8 @@ class HomeAssistantAPI:
             
             # The entity_picture contains the signed URL with authSig token
             # Convert it to external URL that browsers can access
-            external_url = self._get_external_ha_url()
+            external_url = self._get_external_ha_url(base_url)
+            logger.info(f"Using external HA URL: {external_url}")
             
             # The entity_picture is a relative URL like:
             # /api/camera_proxy/camera.prusa_mk3s_mmu3?token=abc123&authSig=JWT_TOKEN
@@ -504,12 +514,12 @@ class HomeAssistantAPI:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
-    def get_camera_stream_url(self, entity_id):
+    def get_camera_stream_url(self, entity_id, base_url=None):
         """Get camera stream URL for entity"""
         try:
             # For streams, we'll use the snapshot URL approach since streams 
             # use the same token mechanism
-            snapshot_url = self.get_camera_snapshot_url(entity_id)
+            snapshot_url = self.get_camera_snapshot_url(entity_id, base_url)
             if snapshot_url and 'camera_proxy/' in snapshot_url:
                 # Convert snapshot to stream URL
                 stream_url = snapshot_url.replace('/api/camera_proxy/', '/api/camera_proxy_stream/')
@@ -615,6 +625,46 @@ def debug_static():
         'static_path_exists': os.path.exists(static_path)
     })
 
+@app.route('/api/ha-info')
+def get_ha_info():
+    """API endpoint to get Home Assistant connection information for dynamic URL detection"""
+    try:
+        # Get the request context information
+        request_info = {
+            'request_host': request.host,
+            'request_url': request.url,
+            'request_base_url': request.base_url,
+            'request_origin': request.headers.get('Origin', ''),
+            'user_agent': request.headers.get('User-Agent', ''),
+            'x_forwarded_for': request.headers.get('X-Forwarded-For', ''),
+            'x_forwarded_proto': request.headers.get('X-Forwarded-Proto', ''),
+            'x_forwarded_host': request.headers.get('X-Forwarded-Host', ''),
+        }
+        
+        # Try to get HA config
+        ha_config = {}
+        try:
+            ha_config['internal_url'] = ha_api.internal_url
+            # Try to detect external URL from request
+            external_url = ha_api._get_external_ha_url()
+            ha_config['detected_external_url'] = external_url
+        except Exception as e:
+            logger.warning(f"Could not get HA config info: {e}")
+        
+        return jsonify({
+            'request_info': request_info,
+            'ha_config': ha_config,
+            'suggested_base_urls': [
+                f"{request.scheme}://{request.host}",  # Current request base
+                request.headers.get('Origin', ''),     # Origin header
+                ha_config.get('detected_external_url', ''),  # Detected HA URL
+            ]
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in ha-info endpoint: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/debug/config')
 def debug_config():
     """Debug endpoint to check printer configuration"""
@@ -642,6 +692,9 @@ def debug_config():
 def get_camera_stream(printer_name):
     """API endpoint to get camera stream URL for a printer"""
     try:
+        # Get base_url from query parameters
+        base_url = request.args.get('base_url')
+        
         printers = storage.get_printers()
         printer_config = next((p for p in printers if p['name'] == printer_name), None)
         
@@ -652,7 +705,7 @@ def get_camera_stream(printer_name):
         if not camera_entity:
             return jsonify({'error': 'No camera entity configured for this printer'}), 404
         
-        stream_url = ha_api.get_camera_stream_url(camera_entity)
+        stream_url = ha_api.get_camera_stream_url(camera_entity, base_url)
         if not stream_url:
             return jsonify({'error': 'Camera stream not available'}), 404
         
@@ -667,6 +720,10 @@ def get_camera_snapshot(printer_name):
     """API endpoint to get camera snapshot URL for a printer"""
     try:
         logger.info(f"Camera snapshot request for printer: {printer_name}")
+        
+        # Get base_url from query parameters
+        base_url = request.args.get('base_url')
+        logger.info(f"Using base_url from request: {base_url}")
         
         printers = storage.get_printers()
         printer_config = next((p for p in printers if p['name'] == printer_name), None)
@@ -684,7 +741,7 @@ def get_camera_snapshot(printer_name):
         
         logger.info(f"Using camera entity: {camera_entity}")
         
-        snapshot_url = ha_api.get_camera_snapshot_url(camera_entity)
+        snapshot_url = ha_api.get_camera_snapshot_url(camera_entity, base_url)
         if not snapshot_url:
             logger.error(f"Failed to get snapshot URL for camera entity: {camera_entity}")
             return jsonify({'error': 'Camera snapshot not available'}), 404

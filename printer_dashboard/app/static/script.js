@@ -615,6 +615,69 @@ class PrintFarmDashboard {
         await this.loadCameraFeed();
     }
     
+    /**
+     * Get the dynamic base URL for camera access
+     * This handles different environments like HA mobile app, external URLs, etc.
+     */
+    async getDynamicBaseUrl() {
+        // Strategy 1: Check if we're in HA mobile app context
+        const userAgent = navigator.userAgent;
+        const isHAApp = userAgent.includes('Home Assistant') || userAgent.includes('homeassistant');
+        
+        // Strategy 2: Check URL patterns to detect HA context
+        const currentUrl = window.location.href;
+        const isHAIngress = currentUrl.includes('/api/hassio_ingress/') || currentUrl.includes('/hassio_ingress/');
+        
+        let baseUrl = window.location.origin;
+        
+        // Strategy 3: If we're in HA ingress or mobile app, try to extract the external HA URL
+        if (isHAIngress || isHAApp) {
+            // Try to get the HA base URL from the current URL
+            // Example: http://100.95.242.53:8123/api/hassio_ingress/abc123/
+            // Should become: http://100.95.242.53:8123
+            
+            const urlParts = currentUrl.split('/');
+            if (urlParts.length >= 3) {
+                // Get protocol and host (first 3 parts: http:, '', host:port)
+                const protocol = urlParts[0]; // http: or https:
+                const host = urlParts[2]; // host:port
+                baseUrl = `${protocol}//${host}`;
+                console.log(`Detected HA context, using base URL: ${baseUrl}`);
+            }
+            
+            // Strategy 4: For mobile app or complex scenarios, ask the backend for help
+            try {
+                const haInfoResponse = await fetch('api/ha-info');
+                if (haInfoResponse.ok) {
+                    const haInfo = await haInfoResponse.json();
+                    console.log('HA Info from backend:', haInfo);
+                    
+                    // Use the best available URL from the backend suggestions
+                    const suggestedUrls = haInfo.suggested_base_urls || [];
+                    for (const suggestedUrl of suggestedUrls) {
+                        if (suggestedUrl && suggestedUrl.trim() && suggestedUrl !== baseUrl) {
+                            baseUrl = suggestedUrl.trim();
+                            console.log(`Using backend suggested base URL: ${baseUrl}`);
+                            break;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not fetch HA info from backend:', e);
+            }
+        }
+        
+        console.log(`Dynamic base URL detection:`, {
+            userAgent: userAgent,
+            isHAApp: isHAApp,
+            isHAIngress: isHAIngress,
+            currentUrl: currentUrl,
+            detectedBaseUrl: baseUrl
+        });
+        
+        return baseUrl;
+    }
+
     async loadCameraFeed() {
         if (!this.currentCameraPrinter) return;
         
@@ -623,9 +686,12 @@ class PrintFarmDashboard {
         const error = document.getElementById('camera-error');
         
         try {
-            // Get fresh snapshot URL
+            // Get the dynamic base URL using our smart detection
+            const baseUrl = await this.getDynamicBaseUrl();
+            
+            // Get fresh snapshot URL with dynamic base_url
             const timestamp = Date.now();
-            const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot?_=${timestamp}`);
+            const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot?base_url=${encodeURIComponent(baseUrl)}&_=${timestamp}`);
             
             if (!snapshotResponse.ok) {
                 throw new Error(`API request failed: ${snapshotResponse.status} ${snapshotResponse.statusText}`);
@@ -634,6 +700,7 @@ class PrintFarmDashboard {
             const snapshotData = await snapshotResponse.json();
             
             console.log('API Response:', snapshotData); // Debug log
+            console.log('Using base URL:', baseUrl); // Debug log
             
             if (snapshotData.snapshot_url) {
                 // Use the snapshot URL directly without any modifications
