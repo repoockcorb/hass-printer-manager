@@ -2,7 +2,6 @@
 
 import os
 import json
-import yaml
 import logging
 import asyncio
 from datetime import datetime, timedelta
