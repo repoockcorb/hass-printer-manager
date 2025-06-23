@@ -412,10 +412,15 @@ class HomeAssistantAPI:
         try:
             headers = {
                 'Authorization': f'Bearer {self.token}',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache'  # Force fresh data
             }
             
             url = f"{self.url}/api/{endpoint.lstrip('/')}"
+            
+            # Add cache-busting parameter for state requests
+            if 'states/' in endpoint:
+                url += f"?_={int(time.time() * 1000)}"
             
             if method == 'GET':
                 response = requests.get(url, headers=headers, timeout=timeout)
@@ -453,17 +458,21 @@ class HomeAssistantAPI:
     def get_camera_snapshot_url(self, entity_id):
         """Get camera snapshot URL for entity"""
         try:
-            # Get entity state to get the camera's access token
+            # Get fresh entity state from Home Assistant
             entity_state = self._make_request(f'states/{entity_id}')
             if not entity_state:
+                logger.error(f"No entity state returned for {entity_id}")
                 return None
             
             # Use entity_picture URL directly
             entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
             if entity_picture:
-                return f"{self.url}{entity_picture}"
-            
-            return None
+                full_url = f"{self.url}{entity_picture}"
+                logger.info(f"Camera snapshot URL for {entity_id}: {full_url}")
+                return full_url
+            else:
+                logger.error(f"No entity_picture found for {entity_id}")
+                return None
             
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")

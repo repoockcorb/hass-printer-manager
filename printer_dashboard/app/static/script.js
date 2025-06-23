@@ -623,27 +623,36 @@ class PrintFarmDashboard {
         const error = document.getElementById('camera-error');
         
         try {
-            // Always get fresh snapshot URL to ensure current token
-            const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot`);
+            // Always get fresh snapshot URL with cache-busting parameter
+            const timestamp = Date.now();
+            const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot?_=${timestamp}`);
             const snapshotData = await snapshotResponse.json();
             
             if (snapshotResponse.ok && snapshotData.snapshot_url) {
-                // Add timestamp to prevent caching
-                const freshUrl = snapshotData.snapshot_url + `&_t=${Date.now()}`;
+                // Add timestamp to prevent browser caching
+                const freshUrl = snapshotData.snapshot_url + `&_cache=${timestamp}`;
+                
+                console.log('Loading camera with URL:', freshUrl); // Debug log
                 
                 stream.onload = () => {
                     loading.style.display = 'none';
                     stream.style.display = 'block';
                     error.style.display = 'none';
+                    console.log('Camera image loaded successfully'); // Debug log
                 };
                 
                 stream.onerror = () => {
                     loading.style.display = 'none';
                     error.style.display = 'flex';
                     error.querySelector('p').textContent = 'Failed to load camera image';
+                    console.error('Camera image failed to load'); // Debug log
                 };
                 
-                stream.src = freshUrl;
+                // Force reload by clearing src first
+                stream.src = '';
+                setTimeout(() => {
+                    stream.src = freshUrl;
+                }, 10);
                 
                 // Start auto-refresh to get fresh tokens
                 this.startCameraRefresh();
