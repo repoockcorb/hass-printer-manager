@@ -28,8 +28,12 @@ class PrinterAPI:
         self.last_update = None
         self.status_cache = {}
         
-    def _make_request(self, endpoint, method='GET', data=None, timeout=5):
-        """Make HTTP request with proper headers"""
+    def _make_request(self, endpoint, method='GET', data=None, timeout=5, allow_status=None):
+        """Make HTTP request with proper headers
+        allow_status: list of HTTP status codes that are accepted as non-error
+        """
+        if allow_status is None:
+            allow_status = []
         try:
             headers = {'Content-Type': 'application/json'}
             
@@ -47,6 +51,8 @@ class PrinterAPI:
             else:
                 raise ValueError(f"Unsupported method: {method}")
                 
+            if response.status_code in allow_status:
+                return response.json() if response.text else None
             response.raise_for_status()
             return response.json()
             
@@ -172,7 +178,7 @@ class OctoPrintAPI(PrinterAPI):
         """Get comprehensive printer status"""
         try:
             # Get printer status
-            printer_status = self._make_request('api/printer')
+            printer_status = self._make_request('api/printer', allow_status=[409])
             job_status = self._make_request('api/job')
             
             if not printer_status or not job_status:
