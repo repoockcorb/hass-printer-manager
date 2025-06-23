@@ -3,95 +3,19 @@
 import os
 import json
 import logging
+import asyncio
 from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request, Response, stream_with_context
+from flask import Flask, render_template, jsonify, request
 import requests
 from requests.exceptions import RequestException, Timeout
+import threading
 import time
-import urllib3
-import base64
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
-app.config['SECRET_KEY'] = 'your-secret-key-here'
-
-# Disable insecure request warnings globally (useful when upstream camera has self-signed certificate)
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# Home Assistant API configuration
-HA_API_BASE = "http://supervisor/core/api"
-HA_HEADERS = {}
-
-def init_ha_api():
-    """Initialize Home Assistant API headers"""
-    global HA_HEADERS
-    ha_token = os.environ.get('SUPERVISOR_TOKEN')
-    if ha_token:
-        HA_HEADERS = {
-            'Authorization': f'Bearer {ha_token}',
-            'Content-Type': 'application/json'
-        }
-        logger.info("Home Assistant API initialized")
-    else:
-        logger.warning("No SUPERVISOR_TOKEN found - HA API will not work")
-
-def get_ha_camera_entities():
-    """Get all camera entities from Home Assistant"""
-    try:
-        response = requests.get(f"{HA_API_BASE}/states", headers=HA_HEADERS, timeout=10)
-        if response.status_code == 200:
-            states = response.json()
-            cameras = [entity for entity in states if entity['entity_id'].startswith('camera.')]
-            logger.info(f"Found {len(cameras)} camera entities in HA")
-            return cameras
-        else:
-            logger.error(f"Failed to get HA states: {response.status_code}")
-            return []
-    except Exception as e:
-        logger.error(f"Error fetching HA camera entities: {e}")
-        return []
-
-def get_ha_camera_stream_url(entity_id):
-    """Get the stream URL for a specific camera entity"""
-    try:
-        # Call camera/create_stream service to get stream URL
-        response = requests.post(
-            f"{HA_API_BASE}/services/camera/create_stream",
-            headers=HA_HEADERS,
-            json={
-                "entity_id": entity_id
-            },
-            timeout=10
-        )
-        if response.status_code == 200:
-            result = response.json()
-            return result.get('url')
-        else:
-            logger.error(f"Failed to create stream for {entity_id}: {response.status_code}")
-            return None
-    except Exception as e:
-        logger.error(f"Error getting stream URL for {entity_id}: {e}")
-        return None
-
-def get_ha_camera_thumbnail(entity_id):
-    """Get thumbnail/snapshot from HA camera entity"""
-    try:
-        response = requests.get(
-            f"{HA_API_BASE}/camera_proxy/{entity_id}",
-            headers=HA_HEADERS,
-            timeout=10
-        )
-        if response.status_code == 200:
-            return response.content
-        else:
-            logger.error(f"Failed to get thumbnail for {entity_id}: {response.status_code}")
-            return None
-    except Exception as e:
-        logger.error(f"Error getting thumbnail for {entity_id}: {e}")
-        return None
 
 class PrinterAPI:
     """Base class for printer API interactions"""
@@ -447,8 +371,6 @@ class PrinterStorage:
     def __init__(self):
         self.config_file = '/data/options.json'
         logger.info(f"PrinterStorage initialized with config file: {self.config_file}")
-        # Initialize HA API
-        init_ha_api()
         self._load_printers()
     
     def _load_printers(self):
@@ -555,72 +477,6 @@ def debug_static():
         'static_path_exists': os.path.exists(static_path)
     })
 
-@app.route('/api/ha-cameras')
-def get_ha_cameras():
-    """API endpoint to get all Home Assistant camera entities"""
-    try:
-        cameras = get_ha_camera_entities()
-        # Format for frontend consumption
-        formatted_cameras = []
-        for camera in cameras:
-            formatted_cameras.append({
-                'entity_id': camera['entity_id'],
-                'friendly_name': camera['attributes'].get('friendly_name', camera['entity_id']),
-                'state': camera['state'],
-                'model': camera['attributes'].get('model_name', 'Unknown'),
-                'brand': camera['attributes'].get('brand', 'Unknown')
-            })
-        return jsonify(formatted_cameras)
-    except Exception as e:
-        logger.error(f"Error getting HA cameras: {e}")
-        return jsonify([]), 500
-
-@app.route('/api/ha-camera-stream/<entity_id>')
-def get_ha_camera_stream_endpoint(entity_id):
-    """Get stream URL for a specific HA camera entity"""
-    try:
-        # Replace dots with underscores for URL safety, then back
-        entity_id = entity_id.replace('_', '.')
-        stream_url = get_ha_camera_stream_url(entity_id)
-        if stream_url:
-            return jsonify({'success': True, 'stream_url': stream_url})
-        else:
-            return jsonify({'success': False, 'error': 'Could not get stream URL'}), 404
-    except Exception as e:
-        logger.error(f"Error getting stream for {entity_id}: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/ha-camera-thumbnail/<entity_id>')
-def get_ha_camera_thumbnail_endpoint(entity_id):
-    """Get thumbnail from HA camera entity"""
-    try:
-        # Replace underscores with dots for entity ID
-        entity_id = entity_id.replace('_', '.')
-        thumbnail_data = get_ha_camera_thumbnail(entity_id)
-        if thumbnail_data:
-            return Response(
-                thumbnail_data,
-                content_type='image/jpeg',
-                headers={
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                }
-            )
-        else:
-            return jsonify({'error': 'Could not get thumbnail'}), 404
-    except Exception as e:
-        logger.error(f"Error getting thumbnail for {entity_id}: {e}")
-        return jsonify({'error': str(e)}), 500
-
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
-    
-    # Use waitress as a production WSGI server
-    try:
-        from waitress import serve
-        logger.info("Starting with Waitress production server...")
-        serve(app, host='127.0.0.1', port=5001, threads=4)
-    except ImportError:
-        logger.warning("Waitress not available, falling back to Flask dev server")
-        app.run(host='127.0.0.1', port=5001, debug=False) 
+    app.run(host='127.0.0.1', port=5001, debug=False) 

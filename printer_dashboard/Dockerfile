@@ -11,12 +11,6 @@ RUN apk add --no-cache \
     jq \
     bash
 
-# Install Python packages that aren't available in Alpine repos
-COPY requirements.txt /tmp/
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt && \
-    pip3 list | grep -E "(flask|gunicorn|eventlet)" && \
-    which gunicorn || echo "Gunicorn not found in PATH"
-
 # Create app directory
 RUN mkdir -p /app
 

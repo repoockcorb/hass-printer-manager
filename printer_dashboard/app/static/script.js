@@ -8,7 +8,6 @@ class PrintFarmDashboard {
             status: 'all',
             type: 'all'
         };
-        this.snapshotTimer = null;
         
         this.init();
     }
@@ -156,13 +155,6 @@ class PrintFarmDashboard {
                 });
             });
             
-            const cameraBtn = card.querySelector('.camera-btn');
-            if(cameraBtn){
-              cameraBtn.addEventListener('click',()=>{
-                 this.showCameraModal(printerName);
-              });
-            }
-            
             grid.appendChild(card);
         }
     }
@@ -259,18 +251,6 @@ class PrintFarmDashboard {
         const updateTime = card.querySelector('.update-time');
         if (printer.lastUpdate) {
             updateTime.textContent = this.formatRelativeTime(printer.lastUpdate);
-        }
-        
-        // Update snapshot if HA camera entity is configured
-        const snapImg = card.querySelector('.snapshot-img');
-        if (snapImg && printer.config.ha_camera_entity) {
-            const entityIdSafe = printer.config.ha_camera_entity.replace('.', '_');
-            const thumbnailUrl = `api/ha-camera-thumbnail/${entityIdSafe}?_ts=${Date.now()}`;
-            snapImg.src = thumbnailUrl;
-            snapImg.alt = 'Camera snapshot';
-        } else if (snapImg) {
-            snapImg.src = '';
-            snapImg.alt = 'No camera configured';
         }
     }
     
@@ -582,92 +562,6 @@ class PrintFarmDashboard {
             return `${diffHours}h ago`;
         } else {
             return `${diffDays}d ago`;
-        }
-    }
-    
-    showCameraModal(printerName){
-        const printer = this.printers.get(printerName);
-        if(!printer) return;
-
-        const modal = document.getElementById('camera-modal');
-        const img   = document.getElementById('camera-stream');
-
-        // Clean up any existing camera streams
-        this.cleanupCamera();
-        
-        // Check if printer has HA camera entity configured
-        if (printer.config.ha_camera_entity) {
-            this.setupHACameraStream(printer.config.ha_camera_entity, modal, img);
-        } else {
-            // No HA camera entity configured
-            img.src = '';
-            img.alt = 'No HA camera entity configured for this printer';
-            img.style.filter = 'grayscale(100%)';
-            modal.style.display = 'flex';
-            this.setupModalCloseHandlers(modal);
-        }
-    }
-    
-    setupHACameraStream(entityId, modal, img) {
-        console.log('Using Home Assistant camera entity:', entityId);
-        
-        // Use HA camera thumbnail with refresh
-        const updateHACamera = async () => {
-            try {
-                const entityIdSafe = entityId.replace('.', '_');
-                const thumbnailUrl = `api/ha-camera-thumbnail/${entityIdSafe}?_ts=${Date.now()}`;
-                
-                // Test if thumbnail is available
-                const response = await fetch(thumbnailUrl);
-                if (response.ok) {
-                    img.src = thumbnailUrl;
-                    img.alt = 'HA Camera Feed';
-                    img.style.filter = '';
-                } else {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-            } catch (error) {
-                console.warn('HA camera thumbnail failed:', error);
-                img.alt = 'HA camera unavailable';
-                img.style.filter = 'grayscale(100%)';
-            }
-        };
-        
-        // Initial load
-        updateHACamera();
-        
-        // Refresh every 2 seconds (reasonable for HA camera)
-        this.snapshotTimer = setInterval(updateHACamera, 2000);
-        
-        modal.style.display = 'flex';
-        this.setupModalCloseHandlers(modal);
-    }
-    
-    setupModalCloseHandlers(modal) {
-        const closeHandler = () => {
-            modal.style.display = 'none';
-            this.cleanupCamera();
-        };
-
-        modal.querySelector('.camera-close').onclick = closeHandler;
-        modal.onclick = (e) => {
-            if (e.target === modal) closeHandler();
-        };
-    }
-    
-    cleanupCamera() {
-        // Clear any timers
-        if (this.snapshotTimer) {
-            clearInterval(this.snapshotTimer);
-            this.snapshotTimer = null;
-        }
-        
-        // Reset camera element
-        const img = document.getElementById('camera-stream');
-        if (img) {
-            img.src = '';
-            img.alt = '';
-            img.style.filter = '';
         }
     }
 }

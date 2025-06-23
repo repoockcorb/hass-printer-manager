@@ -1,6 +1,6 @@
 name: "Print Farm Dashboard"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "3.1.9"
+version: "3.0.5"
 slug: "printer_dashboard"
 init: false
 arch:
@@ -25,8 +25,4 @@ schema:
     - name: str
       type: list(klipper|octoprint)
       url: url
-      api_key: str?
-      ha_camera_entity: str?
-
-
-# Let me know if you want to proceed with snapshot mode or explore a heavier HLS/WebRTC solution.
+      api_key: str? 

@@ -3,12 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: *; media-src 'self' blob: *; connect-src 'self' *; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; script-src 'self' 'unsafe-inline';">
     <title>Print Farm Dashboard</title>
     <link rel="stylesheet" href="static/styles.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -86,10 +84,6 @@
                 <i class="fas fa-exclamation-triangle"></i>
                 <h3>Unable to Load Printers</h3>
                 <p id="error-message">Please check your configuration and try again.</p>
-            </div>
-
-            <div class="camera-thumbnail">
-                <img class="snapshot-img" src="" alt="snapshot" />
             </div>
         </main>
     </div>
@@ -191,10 +185,6 @@
                         <i class="fas fa-stop"></i>
                         Cancel
                     </button>
-                    <button class="btn btn-control camera-btn" data-action="camera">
-                        <i class="fas fa-video"></i>
-                        Camera
-                    </button>
                 </div>
                 <div class="last-update">
                     Updated: <span class="update-time">Never</span>
@@ -218,19 +208,6 @@
                 <button id="modal-confirm" class="btn btn-primary">Confirm</button>
             </div>
         </div>
-    </div>
-
-    <!-- Camera Modal -->
-    <div id="camera-modal" class="modal" style="display:none;">
-      <div class="modal-content camera-modal-content">
-          <div class="modal-header">
-              <h3 id="camera-title">Camera</h3>
-              <button class="modal-close camera-close">&times;</button>
-          </div>
-          <div class="modal-body camera-body">
-              <img id="camera-stream" src="" alt="live stream" />
-          </div>
-      </div>
     </div>
 
     <script src="static/script.js"></script>
