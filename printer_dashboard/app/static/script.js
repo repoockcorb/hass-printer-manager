@@ -1,3 +1,12 @@
+// Configuration for direct Moonraker control
+const DIRECT_CONTROL_CONFIG = {
+    // Enable/disable automatic direct control detection
+    enableAutoDetection: true,
+    
+    // Debug logging for direct control
+    debugLogging: true
+};
+
 class PrintFarmDashboard {
     constructor() {
         this.printers = new Map();
@@ -135,8 +144,7 @@ class PrintFarmDashboard {
     
     async loadPrinters() {
         try {
-            // Use enhanced API that auto-detects direct connection info
-            const response = await fetch('api/printers-enhanced');
+            const response = await fetch('api/printers');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -148,7 +156,7 @@ class PrintFarmDashboard {
                 return;
             }
             
-            // Initialize printer objects with enhanced config
+            // Initialize printer objects
             printerConfigs.forEach(config => {
                 this.printers.set(config.name, {
                     config: config,
@@ -156,9 +164,12 @@ class PrintFarmDashboard {
                     lastUpdate: null
                 });
                 
-                // Log direct connection info if available
-                if (config.uses_direct_control && DIRECT_CONTROL_CONFIG.debugLogging) {
-                    console.log(`🔧 ${config.name}: Auto-detected direct connection ${config.direct_host}:${config.direct_port}`);
+                // Log extracted connection info if debug enabled
+                if (DIRECT_CONTROL_CONFIG.debugLogging) {
+                    const directInfo = this.getDirectControlInfo(config.name);
+                    if (directInfo) {
+                        console.log(`🔧 ${config.name}: Will use direct control ${directInfo.host}:${directInfo.port}`);
+                    }
                 }
             });
             
@@ -859,7 +870,7 @@ class PrintFarmDashboard {
     
     getDirectControlInfo(printerName) {
         /**
-         * Check if a printer is using Home Assistant ingress and get direct connection info
+         * Check if a printer needs direct control and extract connection info from existing URL
          * Returns null if no direct control needed, or {host, port} for direct control
          */
         const printer = this.printers.get(printerName);
@@ -870,40 +881,40 @@ class PrintFarmDashboard {
         
         const config = printer.config;
         
-        // Only apply direct control for Klipper/Moonraker printers
-        if (config.type !== 'klipper') return null;
+        // Only apply direct control for Klipper/Moonraker printers or when accessed through ingress
+        const isKlipper = config.type === 'klipper';
+        const isIngressAccess = window.location.href.includes('/api/hassio_ingress/');
         
-        // Check if the enhanced config indicates we should use direct control
-        if (config.uses_direct_control && config.direct_host && config.direct_port) {
+        if (!isKlipper && !isIngressAccess) return null;
+        
+        // Extract host and port from the configured URL
+        try {
+            const url = new URL(config.url);
+            const host = url.hostname;
+            const port = url.port || (url.protocol === 'https:' ? 443 : 80);
+            
+            // For Moonraker, default port is 7125 if not specified and protocol is http
+            const moonrakerPort = url.port || (url.protocol === 'http:' ? 7125 : port);
+            
             if (DIRECT_CONTROL_CONFIG.debugLogging) {
                 console.log(`⚠️ Using direct control for ${printerName}`);
-                console.log(`📡 Direct connection: ${config.direct_host}:${config.direct_port}`);
+                console.log(`📋 Extracted from config URL: ${config.url}`);
+                console.log(`📡 Direct connection: ${host}:${moonrakerPort}`);
+                console.log(`🔗 Access method: ${isIngressAccess ? 'Home Assistant Ingress' : 'Direct'}`);
             }
             
             return {
-                host: config.direct_host,
-                port: config.direct_port,
+                host: host,
+                port: parseInt(moonrakerPort),
                 api_key: config.api_key || null
             };
-        }
-        
-        // Fallback: Check for ingress URL pattern (backward compatibility)
-        if (config.url && config.url.includes('/api/hassio_ingress/')) {
+            
+        } catch (error) {
             if (DIRECT_CONTROL_CONFIG.debugLogging) {
-                console.log(`⚠️ Detected ingress URL for ${printerName}: ${config.url}`);
-                console.log(`🔀 Using fallback direct control`);
-                console.log(`⚙️ Fallback connection: ${DIRECT_CONTROL_CONFIG.defaultHost}:${DIRECT_CONTROL_CONFIG.defaultPort}`);
-                console.log(`💡 Tip: Enhanced auto-detection failed - check network connectivity`);
+                console.error(`❌ Failed to parse URL for ${printerName}: ${config.url}`, error);
             }
-            
-            return {
-                host: DIRECT_CONTROL_CONFIG.defaultHost,
-                port: DIRECT_CONTROL_CONFIG.defaultPort,
-                api_key: config.api_key || null
-            };
+            return null;
         }
-        
-        return null;
     }
 
     showMovementModal(printerName) {
