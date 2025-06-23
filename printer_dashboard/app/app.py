@@ -639,11 +639,20 @@ def index():
 def get_printers():
     """API endpoint to get all printer configurations"""
     try:
+        logger.info("API: get_printers called")
+        logger.info(f"Request URL: {request.url}")
+        logger.info(f"Request host: {request.host}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        
         printers = storage.get_printers()
         logger.info(f"API: Returning {len(printers)} printer configs")
+        logger.info(f"Printer configs: {printers}")
+        
         return jsonify(printers)
     except Exception as e:
         logger.error(f"Error in get_printers API: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify([]), 500
 
 @app.route('/api/status')
@@ -694,11 +703,25 @@ def control_printer(printer_name, action):
 @app.route('/api/health')
 def health_check():
     """Health check endpoint"""
-    return jsonify({
+    logger.info("Health check called")
+    logger.info(f"Request URL: {request.url}")
+    logger.info(f"Request host: {request.host}")
+    logger.info(f"Number of printers: {len(printer_manager.printers)}")
+    
+    health_data = {
         'status': 'healthy', 
         'printers_count': len(printer_manager.printers),
-        'last_update': max(printer_manager.last_update.values()).isoformat() if printer_manager.last_update else None
-    })
+        'last_update': max(printer_manager.last_update.values()).isoformat() if printer_manager.last_update else None,
+        'request_info': {
+            'url': request.url,
+            'host': request.host,
+            'method': request.method,
+            'user_agent': request.headers.get('User-Agent', '')
+        }
+    }
+    
+    logger.info(f"Health check response: {health_data}")
+    return jsonify(health_data)
 
 @app.route('/debug/static')
 def debug_static():

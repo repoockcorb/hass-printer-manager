@@ -62,6 +62,19 @@
 
         <!-- Main Content -->
         <main class="main-content">
+            <!-- Debug Section (temporary) -->
+            <div id="debug-section" style="background: rgba(239, 68, 68, 0.1); border: 1px solid #f87171; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; color: #f87171;">
+                <h3>Debug Information</h3>
+                <p><strong>Current URL:</strong> <span id="debug-url"></span></p>
+                <p><strong>Origin:</strong> <span id="debug-origin"></span></p>
+                <p><strong>Console:</strong> Check browser console (F12) for detailed logs</p>
+                <div style="margin-top: 0.5rem;">
+                    <button onclick="testAPI()" class="btn btn-secondary" style="margin-right: 0.5rem;">Test API</button>
+                    <button onclick="testMovementModal()" class="btn btn-secondary">Test Movement Modal</button>
+                </div>
+                <div id="debug-results" style="margin-top: 0.5rem; font-family: monospace; font-size: 0.875rem;"></div>
+            </div>
+            
             <div class="printers-grid" id="printers-grid">
                 <!-- Printer cards will be dynamically generated here -->
             </div>
@@ -347,6 +360,58 @@
             </div>
         </div>
     </div>
+
+    <script>
+        // Debug functions (temporary)
+        function updateDebugInfo() {
+            document.getElementById('debug-url').textContent = window.location.href;
+            document.getElementById('debug-origin').textContent = window.location.origin;
+        }
+        
+        async function testAPI() {
+            const resultsDiv = document.getElementById('debug-results');
+            resultsDiv.innerHTML = 'Testing APIs...\n';
+            
+            // Test health endpoint
+            try {
+                const healthResponse = await fetch('api/health');
+                const healthData = await healthResponse.json();
+                resultsDiv.innerHTML += `✅ Health: ${healthResponse.status} - ${JSON.stringify(healthData, null, 2)}\n\n`;
+            } catch (e) {
+                resultsDiv.innerHTML += `❌ Health: ${e.message}\n\n`;
+            }
+            
+            // Test printers endpoint
+            try {
+                const printersResponse = await fetch('api/printers');
+                const printersData = await printersResponse.json();
+                resultsDiv.innerHTML += `✅ Printers: ${printersResponse.status} - ${JSON.stringify(printersData, null, 2)}\n\n`;
+            } catch (e) {
+                resultsDiv.innerHTML += `❌ Printers: ${e.message}\n\n`;
+            }
+        }
+        
+        function testMovementModal() {
+            const modal = document.getElementById('movement-modal');
+            const resultsDiv = document.getElementById('debug-results');
+            
+            if (modal) {
+                resultsDiv.innerHTML = '✅ Movement modal found in DOM\n';
+                modal.style.display = 'flex';
+                resultsDiv.innerHTML += '✅ Movement modal should now be visible\n';
+                
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                    resultsDiv.innerHTML += '✅ Movement modal hidden after 3 seconds\n';
+                }, 3000);
+            } else {
+                resultsDiv.innerHTML = '❌ Movement modal NOT found in DOM\n';
+            }
+        }
+        
+        // Update debug info when page loads
+        document.addEventListener('DOMContentLoaded', updateDebugInfo);
+    </script>
 
     <script src="static/script.js"></script>
 </body>
