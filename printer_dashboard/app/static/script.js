@@ -623,16 +623,18 @@ class PrintFarmDashboard {
         const error = document.getElementById('camera-error');
         
         try {
-            // Always get fresh snapshot URL with cache-busting parameter
+            // Get fresh snapshot URL
             const timestamp = Date.now();
             const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot?_=${timestamp}`);
             const snapshotData = await snapshotResponse.json();
             
+            console.log('API Response:', snapshotData); // Debug log
+            
             if (snapshotResponse.ok && snapshotData.snapshot_url) {
-                // Add timestamp to prevent browser caching
-                const freshUrl = snapshotData.snapshot_url + `&_cache=${timestamp}`;
+                // Use the snapshot URL directly without any modifications
+                const imageUrl = snapshotData.snapshot_url;
                 
-                console.log('Loading camera with URL:', freshUrl); // Debug log
+                console.log('Loading image from URL:', imageUrl); // Debug log
                 
                 stream.onload = () => {
                     loading.style.display = 'none';
@@ -641,20 +643,18 @@ class PrintFarmDashboard {
                     console.log('Camera image loaded successfully'); // Debug log
                 };
                 
-                stream.onerror = () => {
+                stream.onerror = (e) => {
                     loading.style.display = 'none';
                     error.style.display = 'flex';
                     error.querySelector('p').textContent = 'Failed to load camera image';
-                    console.error('Camera image failed to load'); // Debug log
+                    console.error('Camera image failed to load:', e); // Debug log
+                    console.error('Failed URL:', imageUrl); // Debug log
                 };
                 
-                // Force reload by clearing src first
-                stream.src = '';
-                setTimeout(() => {
-                    stream.src = freshUrl;
-                }, 10);
+                // Set the image source directly
+                stream.src = imageUrl;
                 
-                // Start auto-refresh to get fresh tokens
+                // Start auto-refresh to get fresh images
                 this.startCameraRefresh();
             } else {
                 throw new Error(snapshotData.error || 'Failed to get camera snapshot');
