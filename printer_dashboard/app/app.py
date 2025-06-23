@@ -437,15 +437,14 @@ class HomeAssistantAPI:
             if not entity_state:
                 return None
             
-            # Extract the access token from entity_picture
+            # Use entity_picture URL directly but change to stream endpoint
             entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-            if 'token=' in entity_picture:
-                # Extract token from entity_picture URL
-                token = entity_picture.split('token=')[1]
-                return f"{self.url}/api/camera_proxy_stream/{entity_id}?token={token}"
+            if entity_picture:
+                # Convert camera_proxy to camera_proxy_stream
+                stream_url = entity_picture.replace('/api/camera_proxy/', '/api/camera_proxy_stream/')
+                return f"{self.url}{stream_url}"
             
-            # Fallback to supervisor token
-            return f"{self.url}/api/camera_proxy_stream/{entity_id}?token={self.token}"
+            return None
             
         except Exception as e:
             logger.error(f"Error getting camera stream URL for {entity_id}: {e}")
@@ -459,15 +458,12 @@ class HomeAssistantAPI:
             if not entity_state:
                 return None
             
-            # Extract the access token from entity_picture
+            # Use entity_picture URL directly
             entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-            if 'token=' in entity_picture:
-                # Extract token from entity_picture URL
-                token = entity_picture.split('token=')[1]
-                return f"{self.url}/api/camera_proxy/{entity_id}?token={token}"
+            if entity_picture:
+                return f"{self.url}{entity_picture}"
             
-            # Fallback to supervisor token
-            return f"{self.url}/api/camera_proxy/{entity_id}?token={self.token}"
+            return None
             
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")

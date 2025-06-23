@@ -611,36 +611,44 @@ class PrintFarmDashboard {
         
         this.currentCameraPrinter = printerName;
         
+        // Load fresh camera feed
+        await this.loadCameraFeed();
+    }
+    
+    async loadCameraFeed() {
+        if (!this.currentCameraPrinter) return;
+        
+        const stream = document.getElementById('camera-stream');
+        const loading = document.getElementById('camera-loading');
+        const error = document.getElementById('camera-error');
+        
         try {
-            // Get camera stream URL
-            const response = await fetch(`api/camera/${printerName}/stream`);
-            const data = await response.json();
+            // Always get fresh snapshot URL to ensure current token
+            const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot`);
+            const snapshotData = await snapshotResponse.json();
             
-            if (response.ok && data.stream_url) {
-                // Try to load the stream
+            if (snapshotResponse.ok && snapshotData.snapshot_url) {
+                // Add timestamp to prevent caching
+                const freshUrl = snapshotData.snapshot_url + `&_t=${Date.now()}`;
+                
                 stream.onload = () => {
                     loading.style.display = 'none';
                     stream.style.display = 'block';
+                    error.style.display = 'none';
                 };
                 
                 stream.onerror = () => {
                     loading.style.display = 'none';
                     error.style.display = 'flex';
+                    error.querySelector('p').textContent = 'Failed to load camera image';
                 };
                 
-                // Use snapshot URL instead of stream for better compatibility
-                const snapshotResponse = await fetch(`api/camera/${printerName}/snapshot`);
-                const snapshotData = await snapshotResponse.json();
+                stream.src = freshUrl;
                 
-                if (snapshotResponse.ok && snapshotData.snapshot_url) {
-                    stream.src = snapshotData.snapshot_url + `&t=${Date.now()}`;
-                    // Refresh snapshot every 3 seconds
-                    this.startCameraRefresh();
-                } else {
-                    throw new Error(snapshotData.error || 'Failed to get camera snapshot');
-                }
+                // Start auto-refresh to get fresh tokens
+                this.startCameraRefresh();
             } else {
-                throw new Error(data.error || 'Failed to get camera stream');
+                throw new Error(snapshotData.error || 'Failed to get camera snapshot');
             }
         } catch (err) {
             console.error('Error loading camera feed:', err);
@@ -661,34 +669,16 @@ class PrintFarmDashboard {
     }
     
     async refreshCameraFeed() {
-        if (!this.currentCameraPrinter) return;
-        
-        const stream = document.getElementById('camera-stream');
-        const loading = document.getElementById('camera-loading');
-        const error = document.getElementById('camera-error');
-        
-        try {
-            const response = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot`);
-            const data = await response.json();
-            
-            if (response.ok && data.snapshot_url) {
-                stream.src = data.snapshot_url + `&t=${Date.now()}`;
-                error.style.display = 'none';
-            } else {
-                throw new Error(data.error || 'Failed to refresh camera');
-            }
-        } catch (err) {
-            console.error('Error refreshing camera:', err);
-            error.style.display = 'flex';
-            error.querySelector('p').textContent = err.message || 'Failed to refresh camera';
-        }
+        // Just call loadCameraFeed which gets fresh tokens
+        await this.loadCameraFeed();
     }
     
     startCameraRefresh() {
         this.stopCameraRefresh();
+        // Refresh every 3 seconds to get fresh tokens and images
         this.cameraRefreshInterval = setInterval(() => {
-            this.refreshCameraFeed();
-        }, 3000); // Refresh every 3 seconds
+            this.loadCameraFeed();
+        }, 3000);
     }
     
     stopCameraRefresh() {
