@@ -492,12 +492,32 @@ def proxy_camera(printer_name):
         upstream.raise_for_status()
     except Exception as e:
         logger.error(f"Camera proxy error for {printer_name}: {e}")
-        return jsonify({'error':str(e)}),502
+        return jsonify({'error': str(e)}), 502
+
+    # Determine proper Content-Type with boundary parameter so iOS/Android render MJPEG
+    content_type = upstream.headers.get('Content-Type', 'multipart/x-mixed-replace')
+    if 'multipart' in content_type and 'boundary' not in content_type:
+        content_type = content_type + '; boundary=frame'
+
     def generate():
-        for chunk in upstream.iter_content(chunk_size=1024):
-            if chunk:
-                yield chunk
-    return Response(stream_with_context(generate()), content_type=upstream.headers.get('Content-Type','multipart/x-mixed-replace; boundary=frame'))
+        try:
+            for chunk in upstream.iter_content(chunk_size=4096):
+                if chunk:
+                    yield chunk
+        finally:
+            upstream.close()
+
+    return Response(
+        stream_with_context(generate()),
+        content_type=content_type,
+        headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Connection': 'keep-alive'
+        },
+        direct_passthrough=True
+    )
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
