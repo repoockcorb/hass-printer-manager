@@ -407,6 +407,13 @@ class HomeAssistantAPI:
         self.url = (url or os.environ.get('SUPERVISOR_URL', 'http://supervisor/core')).rstrip('/')
         self.token = token or os.environ.get('SUPERVISOR_TOKEN', '')
         
+        logger.info(f"HomeAssistantAPI initialized with URL: {self.url}")
+        logger.info(f"Supervisor token available: {'Yes' if self.token else 'No'}")
+        if self.token:
+            logger.info(f"Supervisor token (first 10 chars): {self.token[:10]}...")
+        else:
+            logger.warning("No supervisor token available - camera access may fail")
+        
     def _make_request(self, endpoint, method='GET', timeout=10):
         """Make HTTP request to Home Assistant API"""
         try:
@@ -437,19 +444,23 @@ class HomeAssistantAPI:
     def get_camera_stream_url(self, entity_id):
         """Get camera stream URL for entity"""
         try:
-            # Get entity state to get the camera's access token
-            entity_state = self._make_request(f'states/{entity_id}')
-            if not entity_state:
+            # Use supervisor token directly for camera stream access
+            if self.token:
+                url = f"{self.url}/api/camera_proxy_stream/{entity_id}?token={self.token}"
+                logger.info(f"Camera stream URL for {entity_id}: {url}")
+                return url
+            else:
+                # Fallback to entity_picture method
+                entity_state = self._make_request(f'states/{entity_id}')
+                if not entity_state:
+                    return None
+                
+                entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
+                if entity_picture:
+                    stream_url = entity_picture.replace('/api/camera_proxy/', '/api/camera_proxy_stream/')
+                    return f"{self.url}{stream_url}"
+                
                 return None
-            
-            # Use entity_picture URL directly but change to stream endpoint
-            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-            if entity_picture:
-                # Convert camera_proxy to camera_proxy_stream
-                stream_url = entity_picture.replace('/api/camera_proxy/', '/api/camera_proxy_stream/')
-                return f"{self.url}{stream_url}"
-            
-            return None
             
         except Exception as e:
             logger.error(f"Error getting camera stream URL for {entity_id}: {e}")
@@ -458,21 +469,26 @@ class HomeAssistantAPI:
     def get_camera_snapshot_url(self, entity_id):
         """Get camera snapshot URL for entity"""
         try:
-            # Get fresh entity state from Home Assistant
-            entity_state = self._make_request(f'states/{entity_id}')
-            if not entity_state:
-                logger.error(f"No entity state returned for {entity_id}")
-                return None
-            
-            # Use entity_picture URL directly
-            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-            if entity_picture:
-                full_url = f"{self.url}{entity_picture}"
-                logger.info(f"Camera snapshot URL for {entity_id}: {full_url}")
-                return full_url
+            # Use supervisor token directly for camera access
+            if self.token:
+                url = f"{self.url}/api/camera_proxy/{entity_id}?token={self.token}"
+                logger.info(f"Camera snapshot URL for {entity_id}: {url}")
+                return url
             else:
-                logger.error(f"No entity_picture found for {entity_id}")
-                return None
+                # Fallback to entity_picture method
+                entity_state = self._make_request(f'states/{entity_id}')
+                if not entity_state:
+                    logger.error(f"No entity state returned for {entity_id}")
+                    return None
+                
+                entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
+                if entity_picture:
+                    full_url = f"{self.url}{entity_picture}"
+                    logger.info(f"Camera snapshot URL (fallback) for {entity_id}: {full_url}")
+                    return full_url
+                else:
+                    logger.error(f"No entity_picture found for {entity_id}")
+                    return None
             
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
