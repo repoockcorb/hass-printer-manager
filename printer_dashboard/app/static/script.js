@@ -51,10 +51,28 @@ class PrintFarmDashboard {
             }
         });
         
+        // Camera modal controls
+        const cameraModal = document.getElementById('camera-modal');
+        const cameraCloseBtn = document.querySelector('.camera-modal-close');
+        const cameraCloseFooterBtn = document.getElementById('camera-close');
+        const cameraRefreshBtn = document.getElementById('camera-refresh');
+        
+        if (cameraCloseBtn) cameraCloseBtn.addEventListener('click', () => this.hideCameraModal());
+        if (cameraCloseFooterBtn) cameraCloseFooterBtn.addEventListener('click', () => this.hideCameraModal());
+        if (cameraRefreshBtn) cameraRefreshBtn.addEventListener('click', () => this.refreshCameraFeed());
+        
+        // Click outside camera modal to close
+        cameraModal.addEventListener('click', (e) => {
+            if (e.target === cameraModal) {
+                this.hideCameraModal();
+            }
+        });
+        
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 this.hideModal();
+                this.hideCameraModal();
             } else if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 this.refreshAll();
@@ -145,6 +163,16 @@ class PrintFarmDashboard {
             // Set basic info
             card.querySelector('.printer-name').textContent = printerName;
             card.querySelector('.printer-type').textContent = printer.config.type || 'klipper';
+            
+            // Setup camera button
+            const cameraBtn = card.querySelector('.camera-btn');
+            if (printer.config.camera_entity) {
+                cameraBtn.setAttribute('data-camera-entity', printer.config.camera_entity);
+                cameraBtn.style.display = 'inline-flex';
+                cameraBtn.addEventListener('click', () => {
+                    this.showCameraModal(printerName, printer.config.camera_entity);
+                });
+            }
             
             // Setup control buttons
             const controlButtons = card.querySelectorAll('.btn-control');
@@ -562,6 +590,111 @@ class PrintFarmDashboard {
             return `${diffHours}h ago`;
         } else {
             return `${diffDays}d ago`;
+        }
+    }
+    
+    async showCameraModal(printerName, cameraEntity) {
+        const modal = document.getElementById('camera-modal');
+        const title = document.getElementById('camera-modal-title');
+        const stream = document.getElementById('camera-stream');
+        const loading = document.getElementById('camera-loading');
+        const error = document.getElementById('camera-error');
+        
+        // Set title
+        title.textContent = `${printerName} Camera`;
+        
+        // Show modal and loading state
+        modal.style.display = 'flex';
+        loading.style.display = 'flex';
+        stream.style.display = 'none';
+        error.style.display = 'none';
+        
+        this.currentCameraPrinter = printerName;
+        
+        try {
+            // Get camera stream URL
+            const response = await fetch(`api/camera/${printerName}/stream`);
+            const data = await response.json();
+            
+            if (response.ok && data.stream_url) {
+                // Try to load the stream
+                stream.onload = () => {
+                    loading.style.display = 'none';
+                    stream.style.display = 'block';
+                };
+                
+                stream.onerror = () => {
+                    loading.style.display = 'none';
+                    error.style.display = 'flex';
+                };
+                
+                // Use snapshot URL instead of stream for better compatibility
+                const snapshotResponse = await fetch(`api/camera/${printerName}/snapshot`);
+                const snapshotData = await snapshotResponse.json();
+                
+                if (snapshotResponse.ok && snapshotData.snapshot_url) {
+                    stream.src = snapshotData.snapshot_url + `&t=${Date.now()}`;
+                    // Refresh snapshot every 3 seconds
+                    this.startCameraRefresh();
+                } else {
+                    throw new Error(snapshotData.error || 'Failed to get camera snapshot');
+                }
+            } else {
+                throw new Error(data.error || 'Failed to get camera stream');
+            }
+        } catch (err) {
+            console.error('Error loading camera feed:', err);
+            loading.style.display = 'none';
+            error.style.display = 'flex';
+            error.querySelector('p').textContent = err.message || 'Camera feed unavailable';
+        }
+    }
+    
+    hideCameraModal() {
+        const modal = document.getElementById('camera-modal');
+        const stream = document.getElementById('camera-stream');
+        
+        modal.style.display = 'none';
+        stream.src = '';
+        this.currentCameraPrinter = null;
+        this.stopCameraRefresh();
+    }
+    
+    async refreshCameraFeed() {
+        if (!this.currentCameraPrinter) return;
+        
+        const stream = document.getElementById('camera-stream');
+        const loading = document.getElementById('camera-loading');
+        const error = document.getElementById('camera-error');
+        
+        try {
+            const response = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot`);
+            const data = await response.json();
+            
+            if (response.ok && data.snapshot_url) {
+                stream.src = data.snapshot_url + `&t=${Date.now()}`;
+                error.style.display = 'none';
+            } else {
+                throw new Error(data.error || 'Failed to refresh camera');
+            }
+        } catch (err) {
+            console.error('Error refreshing camera:', err);
+            error.style.display = 'flex';
+            error.querySelector('p').textContent = err.message || 'Failed to refresh camera';
+        }
+    }
+    
+    startCameraRefresh() {
+        this.stopCameraRefresh();
+        this.cameraRefreshInterval = setInterval(() => {
+            this.refreshCameraFeed();
+        }, 3000); // Refresh every 3 seconds
+    }
+    
+    stopCameraRefresh() {
+        if (this.cameraRefreshInterval) {
+            clearInterval(this.cameraRefreshInterval);
+            this.cameraRefreshInterval = null;
         }
     }
 }

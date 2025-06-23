@@ -229,7 +229,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1rem;
+    gap: 1rem;
 }
 
 .printer-info h3 {
@@ -240,21 +241,21 @@ body {
 }
 
 .printer-type {
-    display: inline-block;
-    background: rgba(96, 165, 250, 0.2);
-    color: #60a5fa;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
+    background: rgba(71, 85, 105, 0.8);
+    color: #94a3b8;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
     font-size: 0.75rem;
-    font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    font-weight: 500;
 }
 
 .printer-status {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-shrink: 0;
 }
 
 .status-indicator {
@@ -619,6 +620,74 @@ body {
     justify-content: flex-end;
 }
 
+/* Camera Modal Styles */
+.camera-modal .modal-content {
+    max-width: 90vw;
+    max-height: 90vh;
+    width: auto;
+    height: auto;
+}
+
+.camera-modal-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.camera-modal-body {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+}
+
+.camera-container {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 400px;
+}
+
+.camera-container img {
+    max-width: 100%;
+    max-height: 70vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+}
+
+.camera-loading,
+.camera-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #94a3b8;
+    text-align: center;
+}
+
+.camera-loading .spinner {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 1rem;
+}
+
+.camera-error i {
+    font-size: 2rem;
+    color: #f87171;
+    margin-bottom: 0.5rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .app-header {
@@ -759,4 +828,29 @@ body {
 
 .text-error {
     color: #f87171 !important;
+}
+
+/* Camera Section */
+.camera-section {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-camera {
+    padding: 0.5rem;
+    background: rgba(71, 85, 105, 0.8);
+    color: #60a5fa;
+    border: 1px solid rgba(96, 165, 250, 0.3);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    min-width: auto;
+    transition: all 0.2s;
+}
+
+.btn-camera:hover {
+    background: rgba(96, 165, 250, 0.2);
+    border-color: #60a5fa;
+    color: #93c5fd;
+    transform: translateY(-1px);
 } 

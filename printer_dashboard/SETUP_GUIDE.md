@@ -556,4 +556,153 @@ For issues and support:
 1. Check the add-on logs for detailed error messages
 2. Verify your configuration against this guide
 3. Test SSH connectivity manually
-4. Report issues with full logs and configuration details 
+4. Report issues with full logs and configuration details
+
+## 📹 Camera Integration Setup
+
+The Print Farm Dashboard now supports Home Assistant camera integration! This feature allows you to view live camera feeds directly from your printer dashboard.
+
+### Prerequisites for Camera Feature
+
+1. **Home Assistant** with cameras configured
+2. **Camera entities** available in Home Assistant  
+3. **Print Farm Dashboard** add-on installed and running
+
+### Step 1: Configure Cameras in Home Assistant
+
+First, ensure your cameras are properly configured in Home Assistant. Add camera configurations to your `configuration.yaml`:
+
+#### For IP Cameras:
+```yaml
+camera:
+  - platform: generic
+    name: "Ender 3 Camera"
+    still_image_url: "http://192.168.1.200/snapshot.cgi"
+    stream_source: "rtsp://192.168.1.200:554/stream"
+```
+
+#### For OctoPrint Cameras:
+```yaml
+camera:
+  - platform: mjpeg
+    name: "OctoPrint Camera"
+    mjpeg_url: "http://your-octoprint-ip/webcam/?action=stream"
+    still_image_url: "http://your-octoprint-ip/webcam/?action=snapshot"
+```
+
+#### For Mainsail/Fluidd Cameras:
+```yaml
+camera:
+  - platform: mjpeg
+    name: "Klipper Camera"
+    mjpeg_url: "http://your-klipper-pi-ip/webcam/?action=stream"
+    still_image_url: "http://your-klipper-pi-ip/webcam/?action=snapshot"
+```
+
+#### For ESP32-CAM:
+```yaml
+camera:
+  - platform: generic
+    name: "ESP32 Camera"
+    still_image_url: "http://esp32-cam-ip/capture"
+    stream_source: "http://esp32-cam-ip:81/stream"
+```
+
+### Step 2: Configure Printer Dashboard
+
+Update your printer configurations in the add-on settings to include camera entities:
+
+```yaml
+printers:
+  - name: "Ender 3 Pro"
+    type: "klipper" 
+    url: "http://192.168.1.100"
+    api_key: ""
+    camera_entity: "camera.ender_3_camera"
+    
+  - name: "Prusa i3 MK3S"
+    type: "octoprint"
+    url: "http://192.168.1.101"  
+    api_key: "YOUR_OCTOPRINT_API_KEY"
+    camera_entity: "camera.octoprint_camera"
+
+home_assistant:
+  url: "http://supervisor/core"  # Auto-configured for add-on
+  token: ""  # Auto-configured for add-on
+```
+
+### Step 3: Verify Camera Access
+
+1. Go to **Developer Tools** > **States** in Home Assistant
+2. Search for your camera entities (e.g., `camera.ender_3_camera`)
+3. Verify cameras show as available with recent state updates
+
+### Step 4: Test Camera Integration
+
+1. **Restart** the Print Farm Dashboard add-on
+2. **Open the dashboard**
+3. **Look for camera icons** (📹) on printer cards that have cameras configured
+4. **Click camera icon** to view the live feed in a modal window
+
+## Camera Features
+
+- **Live Preview**: Click camera button to view feed in full-screen modal
+- **Auto-refresh**: Snapshots refresh every 3 seconds for near real-time viewing
+- **Error Handling**: Graceful fallback when cameras are unavailable
+- **Responsive Design**: Camera modal adapts to different screen sizes
+
+## Camera Troubleshooting
+
+### Camera Button Not Visible
+- ✅ Verify `camera_entity` is correctly set in printer configuration
+- ✅ Check that camera entity exists in Home Assistant
+- ✅ Review add-on logs for configuration errors
+
+### Camera Feed Not Loading  
+- ✅ Test camera directly in Home Assistant's camera view
+- ✅ Verify camera entity state in Developer Tools  
+- ✅ Check Home Assistant logs for camera-related errors
+- ✅ Ensure camera URLs are accessible from add-on container
+
+### Camera Shows Error Message
+- ✅ Verify camera is online and accessible
+- ✅ Check camera permissions in Home Assistant
+- ✅ Test camera snapshot URL directly in browser
+- ✅ Review Home Assistant API token permissions
+
+### Performance Issues
+- ✅ Use snapshot URLs rather than video streams
+- ✅ Consider reducing camera resolution
+- ✅ Ensure cameras are on same network as Home Assistant
+- ✅ Use wired connections when possible
+
+## Security Considerations
+
+- 🔒 Use strong passwords for cameras
+- 🔒 Enable HTTPS when possible
+- 🔒 Restrict camera access to local network only
+- 🔒 Keep camera firmware updated
+- 🔒 Consider VPN access for remote monitoring
+
+## Advanced Camera Setup
+
+### Multiple Camera Angles
+For multiple camera views per printer, create camera groups in Home Assistant:
+
+```yaml
+camera:
+  - platform: group
+    name: "Printer Multi-View"
+    entities:
+      - camera.printer_front
+      - camera.printer_side
+      - camera.printer_bed
+```
+
+### Camera Quality Optimization
+Adjust camera settings for optimal performance:
+- Resolution: 640x480 or 800x600 for good balance
+- Frame Rate: 5-15 FPS for smooth viewing
+- Compression: Moderate to balance quality and bandwidth
+
+Need additional help? Check the troubleshooting section or create an issue on GitHub! 

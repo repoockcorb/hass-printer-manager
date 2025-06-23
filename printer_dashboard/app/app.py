@@ -2,10 +2,11 @@
 
 import os
 import json
+import yaml
 import logging
 import asyncio
 from datetime import datetime, timedelta
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, Response
 import requests
 from requests.exceptions import RequestException, Timeout
 import threading
@@ -400,6 +401,74 @@ class PrinterStorage:
 # Initialize storage
 storage = PrinterStorage()
 
+# Initialize Home Assistant API
+def get_ha_config():
+    """Get Home Assistant configuration from add-on config"""
+    try:
+        if os.path.exists('/data/options.json'):
+            with open('/data/options.json', 'r') as f:
+                config = json.load(f)
+                ha_config = config.get('home_assistant', {})
+                return ha_config.get('url'), ha_config.get('token')
+    except Exception as e:
+        logger.error(f"Error loading HA config: {e}")
+    return None, None
+
+ha_url, ha_token = get_ha_config()
+ha_api = HomeAssistantAPI(ha_url, ha_token)
+
+class HomeAssistantAPI:
+    """Home Assistant API integration for camera feeds"""
+    
+    def __init__(self, url=None, token=None):
+        self.url = (url or os.environ.get('SUPERVISOR_URL', 'http://supervisor/core')).rstrip('/')
+        self.token = token or os.environ.get('SUPERVISOR_TOKEN', '')
+        
+    def _make_request(self, endpoint, method='GET', timeout=10):
+        """Make HTTP request to Home Assistant API"""
+        try:
+            headers = {
+                'Authorization': f'Bearer {self.token}',
+                'Content-Type': 'application/json'
+            }
+            
+            url = f"{self.url}/api/{endpoint.lstrip('/')}"
+            
+            if method == 'GET':
+                response = requests.get(url, headers=headers, timeout=timeout)
+            else:
+                raise ValueError(f"Unsupported method: {method}")
+                
+            response.raise_for_status()
+            return response.json() if response.text else None
+            
+        except Exception as e:
+            logger.error(f"Home Assistant request failed: {e}")
+            return None
+    
+    def get_camera_stream_url(self, entity_id):
+        """Get camera stream URL for entity"""
+        try:
+            # Get entity state to verify it exists
+            entity_state = self._make_request(f'states/{entity_id}')
+            if not entity_state:
+                return None
+                
+            # Return the camera stream URL
+            return f"{self.url}/api/camera_proxy_stream/{entity_id}?token={self.token}"
+            
+        except Exception as e:
+            logger.error(f"Error getting camera stream URL for {entity_id}: {e}")
+            return None
+    
+    def get_camera_snapshot_url(self, entity_id):
+        """Get camera snapshot URL for entity"""
+        try:
+            return f"{self.url}/api/camera_proxy/{entity_id}?token={self.token}"
+        except Exception as e:
+            logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
+            return None
+
 @app.route('/')
 def index():
     """Main dashboard page"""
@@ -476,6 +545,54 @@ def debug_static():
         'working_directory': os.getcwd(),
         'static_path_exists': os.path.exists(static_path)
     })
+
+@app.route('/api/camera/<printer_name>/stream')
+def get_camera_stream(printer_name):
+    """API endpoint to get camera stream URL for a printer"""
+    try:
+        printers = storage.get_printers()
+        printer_config = next((p for p in printers if p['name'] == printer_name), None)
+        
+        if not printer_config:
+            return jsonify({'error': 'Printer not found'}), 404
+        
+        camera_entity = printer_config.get('camera_entity')
+        if not camera_entity:
+            return jsonify({'error': 'No camera entity configured for this printer'}), 404
+        
+        stream_url = ha_api.get_camera_stream_url(camera_entity)
+        if not stream_url:
+            return jsonify({'error': 'Camera stream not available'}), 404
+        
+        return jsonify({'stream_url': stream_url})
+        
+    except Exception as e:
+        logger.error(f"Error getting camera stream for {printer_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/camera/<printer_name>/snapshot')
+def get_camera_snapshot(printer_name):
+    """API endpoint to get camera snapshot URL for a printer"""
+    try:
+        printers = storage.get_printers()
+        printer_config = next((p for p in printers if p['name'] == printer_name), None)
+        
+        if not printer_config:
+            return jsonify({'error': 'Printer not found'}), 404
+        
+        camera_entity = printer_config.get('camera_entity')
+        if not camera_entity:
+            return jsonify({'error': 'No camera entity configured for this printer'}), 404
+        
+        snapshot_url = ha_api.get_camera_snapshot_url(camera_entity)
+        if not snapshot_url:
+            return jsonify({'error': 'Camera snapshot not available'}), 404
+        
+        return jsonify({'snapshot_url': snapshot_url})
+        
+    except Exception as e:
+        logger.error(f"Error getting camera snapshot for {printer_name}: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")

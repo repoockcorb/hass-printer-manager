@@ -100,6 +100,11 @@
                     <span class="status-indicator"></span>
                     <span class="status-text"></span>
                 </div>
+                <div class="camera-section">
+                    <button class="btn btn-camera camera-btn" data-camera-entity="" style="display: none;">
+                        <i class="fas fa-video"></i>
+                    </button>
+                </div>
             </div>
             
             <div class="card-body">
@@ -192,6 +197,36 @@
             </div>
         </div>
     </template>
+
+    <!-- Camera Modal -->
+    <div id="camera-modal" class="modal camera-modal" style="display: none;">
+        <div class="modal-content camera-modal-content">
+            <div class="modal-header">
+                <h3 id="camera-modal-title">Camera Feed</h3>
+                <button class="modal-close camera-modal-close">&times;</button>
+            </div>
+            <div class="modal-body camera-modal-body">
+                <div class="camera-container">
+                    <img id="camera-stream" src="" alt="Camera feed" style="display: none;">
+                    <div id="camera-loading" class="camera-loading">
+                        <div class="spinner"></div>
+                        <p>Loading camera feed...</p>
+                    </div>
+                    <div id="camera-error" class="camera-error" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>Camera feed unavailable</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="camera-refresh" class="btn btn-secondary">
+                    <i class="fas fa-sync-alt"></i>
+                    Refresh
+                </button>
+                <button id="camera-close" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Control Confirmation Modal -->
     <div id="confirm-modal" class="modal" style="display: none;">

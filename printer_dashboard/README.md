@@ -1,17 +1,54 @@
 # Print Farm Dashboard
 
-Advanced print farm management Home Assistant add-on with direct Moonraker and OctoPrint API integration. This add-on transforms your Home Assistant into a comprehensive 3D printer management system similar to AutoFarm3D.
+Advanced print farm management with direct Moonraker and OctoPrint API integration, now with Home Assistant camera support!
 
 ## Features
 
-- **Real-time Monitoring**: Live status updates for all your 3D printers
-- **Multi-Platform Support**: Works with both Klipper (via Moonraker) and OctoPrint printers
-- **Modern Web Interface**: Beautiful, responsive dashboard with real-time updates
-- **Print Control**: Pause, resume, and cancel prints directly from the dashboard  
-- **Comprehensive Status**: View temperatures, progress, positions, and print times
-- **Filtering & Search**: Filter printers by status and type
-- **Auto-refresh**: Configurable auto-refresh with pause when tab is not active
-- **Mobile Responsive**: Works perfectly on desktop, tablet, and mobile devices
+- **Real-time Status Monitoring** - Live updates for printer status, temperatures, progress, and more
+- **Multi-Printer Support** - Manage multiple Klipper and OctoPrint printers from one interface
+- **Print Control** - Pause, resume, and cancel prints directly from the dashboard
+- **Camera Integration** - View live camera feeds from Home Assistant camera entities
+- **Modern UI** - Beautiful, responsive interface with dark theme
+- **Auto-refresh** - Automatic status updates every 10 seconds
+- **Filtering** - Filter printers by status and type
+
+## Camera Feature
+
+The dashboard now supports displaying camera feeds for each printer using Home Assistant camera entities. 
+
+### Setup
+
+1. Configure your cameras in Home Assistant
+2. Add the `camera_entity` field to your printer configuration
+3. Set up Home Assistant API access (automatically configured when running as a Home Assistant add-on)
+
+### Example Configuration
+
+```yaml
+printers:
+  - name: "Ender 3 Pro"
+    type: "klipper"
+    url: "http://192.168.1.100"
+    api_key: "your-api-key"
+    camera_entity: "camera.ender3_camera"
+  
+  - name: "Prusa i3 MK3S"
+    type: "octoprint"
+    url: "http://192.168.1.101"
+    api_key: "your-octoprint-api-key"
+    camera_entity: "camera.prusa_webcam"
+
+home_assistant:
+  url: "http://supervisor/core"  # Auto-configured for HA add-on
+  token: ""  # Auto-configured for HA add-on
+```
+
+### Camera Features
+
+- **Live Preview** - Click the camera button on any printer card to view the camera feed
+- **Auto-refresh** - Camera snapshots refresh every 3 seconds
+- **Full-screen Modal** - Large, clear view of your printer's camera
+- **Error Handling** - Graceful fallback when cameras are unavailable
 
 ## Screenshots
 
@@ -25,85 +62,41 @@ The dashboard provides a card-based layout showing:
 
 ## Installation
 
-1. Add this repository to your Home Assistant Add-on Store
+### Home Assistant Add-on (Recommended)
+
+1. Add this repository to your Home Assistant add-on store
 2. Install the "Print Farm Dashboard" add-on
 3. Configure your printers in the add-on configuration
 4. Start the add-on
-5. Access the dashboard through the Web UI or Home Assistant sidebar
+
+### Manual Installation
+
+1. Clone this repository
+2. Install dependencies: `pip install -r requirements.txt`
+3. Create configuration file (see example above)
+4. Run: `python app/app.py`
 
 ## Configuration
 
-### Basic Configuration
+The dashboard supports both Klipper (via Moonraker) and OctoPrint printers. Each printer can optionally have a camera entity configured.
 
-Add your printers to the configuration. Here's an example setup:
+### Required Fields
+- `name`: Display name for the printer
+- `type`: Either "klipper" or "octoprint"
+- `url`: Base URL of the printer API
 
-```yaml
-printers:
-  - name: "Ender 3 Pro"
-    type: "klipper"
-    url: "http://192.168.1.100"
-    api_key: "your_moonraker_api_key_if_required"
-    
-  - name: "Prusa MK3S"
-    type: "octoprint"
-    url: "http://192.168.1.101"
-    api_key: "your_octoprint_api_key"
-    
-  - name: "Voron 2.4"
-    type: "klipper"
-    url: "http://voron.local"
-```
-
-### Configuration Options
-
-| Option | Type | Required | Description |
-|--------|------|----------|-------------|
-| `name` | string | Yes | Display name for the printer |
-| `type` | string | Yes | Printer type: `klipper` or `octoprint` |
-| `url` | string | Yes | Base URL of the printer (Moonraker or OctoPrint) |
-| `api_key` | string | No | API key for authentication (if required) |
-
-### Klipper/Moonraker Setup
-
-For Klipper printers with Moonraker:
-
-1. **URL Format**: Use the Moonraker URL (typically port 7125)
-   ```
-   http://your-printer-ip:7125
-   ```
-
-2. **API Key**: Usually not required for local network access, but can be configured in Moonraker if needed
-
-3. **Moonraker Configuration**: Ensure your moonraker.conf has CORS enabled:
-   ```ini
-   [authorization]
-   cors_domains:
-       http://homeassistant.local:8123
-       http://your-ha-ip:8123
-   ```
-
-### OctoPrint Setup  
-
-For OctoPrint printers:
-
-1. **URL Format**: Use the OctoPrint URL (typically port 80 or 5000)
-   ```
-   http://your-printer-ip
-   ```
-
-2. **API Key**: Required - get this from OctoPrint Settings > API
-   
-3. **CORS Configuration**: Add your Home Assistant URL to OctoPrint's CORS settings
+### Optional Fields
+- `api_key`: API key for authentication (required for OctoPrint)
+- `camera_entity`: Home Assistant camera entity ID
 
 ## API Endpoints
 
-The add-on exposes several API endpoints:
-
-- `GET /api/printers` - Get printer configurations
-- `GET /api/status` - Get status for all printers  
+- `GET /api/printers` - Get all printer configurations
+- `GET /api/status` - Get status for all printers
 - `GET /api/status/<printer_name>` - Get status for specific printer
 - `POST /api/control/<printer_name>/<action>` - Control printer (pause/resume/cancel)
-- `GET /api/health` - Health check endpoint
+- `GET /api/camera/<printer_name>/stream` - Get camera stream URL
+- `GET /api/camera/<printer_name>/snapshot` - Get camera snapshot URL
 
 ## Supported Printer States
 
@@ -164,10 +157,7 @@ This add-on is open source. Feel free to contribute improvements, bug fixes, or 
 
 ## Support
 
-For issues and support:
-1. Check the troubleshooting section above
-2. Enable debug logging to get detailed error information  
-3. Create an issue with logs and configuration details
+For issues and feature requests, please check the GitHub repository.
 
 ## Changelog
 

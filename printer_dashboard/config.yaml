@@ -1,6 +1,6 @@
 name: "Print Farm Dashboard"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "3.0.5"
+version: "4.0.0"
 slug: "printer_dashboard"
 init: false
 arch:
@@ -20,9 +20,16 @@ homeassistant_api: true
 auth_api: true
 options:
   printers: []
+  home_assistant:
+    url: "http://supervisor/core"
+    token: ""
 schema:
   printers:
     - name: str
       type: list(klipper|octoprint)
       url: url
-      api_key: str? 
+      api_key: str?
+      camera_entity: str?
+  home_assistant:
+    url: url?
+    token: str? 
