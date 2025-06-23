@@ -10,6 +10,7 @@ import requests
 from requests.exceptions import RequestException, Timeout
 import threading
 import time
+import urllib.parse
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -72,6 +73,31 @@ class PrinterAPI:
 
 class KlipperAPI(PrinterAPI):
     """Moonraker API for Klipper printers"""
+    
+    def _send_gcode(self, gcode_command):
+        """Send G-code command to Moonraker using URL parameters"""
+        try:
+            # Encode the G-code command for URL
+            encoded_gcode = urllib.parse.quote(gcode_command)
+            endpoint = f"printer/gcode/script?script={encoded_gcode}"
+            
+            headers = {'Content-Type': 'application/json'}
+            if self.api_key:
+                headers['Authorization'] = f'Bearer {self.api_key}'
+                
+            url = f"{self.url}/{endpoint}"
+            logger.info(f"{self.name} sending G-code via URL: {url}")
+            
+            response = requests.post(url, headers=headers, timeout=5)
+            response.raise_for_status()
+            
+            result = response.json() if response.text else {'ok': True}
+            logger.info(f"{self.name} G-code response: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"{self.name} G-code command failed: {e}")
+            return None
     
     def get_status(self):
         """Get comprehensive printer status"""
@@ -182,36 +208,57 @@ class KlipperAPI(PrinterAPI):
     
     def home_printer(self, axes=None):
         """Home printer axes. If axes is None, homes all axes"""
-        if axes is None:
-            axes = ['X', 'Y', 'Z']
+        if axes is None or axes == 'all':
+            # Home all axes with a single G28 command
+            gcode = "G28"
+            logger.info(f"{self.name} homing all axes: {gcode}")
         elif isinstance(axes, str):
-            axes = [axes.upper()]
+            # Home a single axis
+            axis = axes.upper()
+            if axis in ['X', 'Y', 'Z']:
+                gcode = f"G28 {axis}"
+                logger.info(f"{self.name} homing {axis} axis: {gcode}")
+            else:
+                logger.error(f"{self.name} invalid axis for homing: {axes}")
+                return None
+        elif isinstance(axes, list):
+            # Home specific axes
+            valid_axes = [ax.upper() for ax in axes if ax.upper() in ['X', 'Y', 'Z']]
+            if valid_axes:
+                gcode = f"G28 {' '.join(valid_axes)}"
+                logger.info(f"{self.name} homing axes {valid_axes}: {gcode}")
+            else:
+                logger.error(f"{self.name} no valid axes for homing: {axes}")
+                return None
+        else:
+            logger.error(f"{self.name} invalid axes parameter: {axes}")
+            return None
         
-        gcode_commands = []
-        for axis in axes:
-            if axis.upper() in ['X', 'Y', 'Z']:
-                gcode_commands.append(f"G28 {axis.upper()}")
-        
-        if gcode_commands:
-            return self._make_request('printer/gcode/script', method='POST', 
-                                    data={'script': '\n'.join(gcode_commands)})
-        return None
+        # Use the new _send_gcode method for Moonraker
+        result = self._send_gcode(gcode)
+        return {'success': True, 'result': result} if result else {'success': False, 'error': 'G-code command failed'}
     
     def jog_printer(self, axis, distance):
         """Jog printer in specified axis by distance (in mm)"""
         axis = axis.upper()
         if axis not in ['X', 'Y', 'Z']:
+            logger.error(f"{self.name} invalid axis for jogging: {axis}")
             return None
             
         try:
             distance = float(distance)
         except (ValueError, TypeError):
+            logger.error(f"{self.name} invalid distance for jogging: {distance}")
             return None
         
-        # Use relative positioning
-        gcode = f"G91\nG1 {axis}{distance} F3000\nG90"
-        return self._make_request('printer/gcode/script', method='POST', 
-                                data={'script': gcode})
+        # Use relative positioning with safer feedrate
+        # G91: relative mode, G0: rapid move, G90: absolute mode
+        gcode = f"G91\nG0 {axis}{distance} F1800\nG90"
+        logger.info(f"{self.name} jogging {axis}{distance:+.1f}mm: {gcode.replace(chr(10), ' | ')}")
+        
+        # Use the new _send_gcode method for Moonraker
+        result = self._send_gcode(gcode)
+        return {'success': True, 'result': result} if result else {'success': False, 'error': 'G-code command failed'}
 
 class OctoPrintAPI(PrinterAPI):
     """OctoPrint API for OctoPrint printers"""
@@ -683,21 +730,29 @@ def get_printer_status(printer_name):
 def control_printer(printer_name, action):
     """API endpoint to control a printer"""
     try:
+        logger.info(f"Control request: {printer_name} -> {action}")
+        
         # Get additional parameters from request JSON
         data = request.get_json() or {}
+        logger.info(f"Control request data: {data}")
         
         # Extract parameters for different actions
         kwargs = {}
         if action == 'home':
             kwargs['axes'] = data.get('axes')  # Can be None for all axes, or specific axes like ['X', 'Y']
+            logger.info(f"Home action with axes: {kwargs['axes']}")
         elif action == 'jog':
             kwargs['axis'] = data.get('axis')  # Required: 'X', 'Y', or 'Z'
             kwargs['distance'] = data.get('distance')  # Required: distance in mm
+            logger.info(f"Jog action with axis={kwargs['axis']}, distance={kwargs['distance']}")
         
         result = printer_manager.control_printer(printer_name, action, **kwargs)
+        logger.info(f"Control result: {result}")
         return jsonify(result)
     except Exception as e:
         logger.error(f"Error controlling {printer_name}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health')
@@ -889,6 +944,46 @@ def get_camera_snapshot(printer_name):
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/test-gcode/<printer_name>', methods=['POST'])
+def test_gcode(printer_name):
+    """Test endpoint to send simple G-code to a printer"""
+    try:
+        logger.info(f"G-code test request for: {printer_name}")
+        
+        # Get G-code from request
+        data = request.get_json() or {}
+        gcode = data.get('gcode', 'M115')  # Default to M115 (get firmware info)
+        
+        logger.info(f"Sending test G-code: {gcode}")
+        
+        if printer_name not in printer_manager.printers:
+            return jsonify({'success': False, 'error': 'Printer not found'}), 404
+            
+        printer = printer_manager.printers[printer_name]
+        
+        # Use appropriate method based on printer type
+        if printer.printer_type == 'klipper':
+            result = printer._send_gcode(gcode)
+        else:
+            # For OctoPrint, use the original method
+            result = printer._make_request('printer/gcode/script', method='POST', 
+                                         data={'script': gcode})
+        
+        logger.info(f"G-code test result: {result}")
+        
+        return jsonify({
+            'success': True, 
+            'gcode': gcode,
+            'result': result,
+            'printer_type': printer.printer_type
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in G-code test: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")

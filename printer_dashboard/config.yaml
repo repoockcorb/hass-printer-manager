@@ -1,6 +1,6 @@
 name: "Print Farm Dashboard"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "4.0.21"
+version: "4.0.24"
 slug: "printer_dashboard"
 init: false
 arch:
@@ -32,4 +32,4 @@ schema:
       camera_entity: str?
   home_assistant:
     url: url?
-    token: str? 
+    token: str?
