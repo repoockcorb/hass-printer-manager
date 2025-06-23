@@ -400,22 +400,6 @@ class PrinterStorage:
 # Initialize storage
 storage = PrinterStorage()
 
-# Initialize Home Assistant API
-def get_ha_config():
-    """Get Home Assistant configuration from add-on config"""
-    try:
-        if os.path.exists('/data/options.json'):
-            with open('/data/options.json', 'r') as f:
-                config = json.load(f)
-                ha_config = config.get('home_assistant', {})
-                return ha_config.get('url'), ha_config.get('token')
-    except Exception as e:
-        logger.error(f"Error loading HA config: {e}")
-    return None, None
-
-ha_url, ha_token = get_ha_config()
-ha_api = HomeAssistantAPI(ha_url, ha_token)
-
 class HomeAssistantAPI:
     """Home Assistant API integration for camera feeds"""
     
@@ -467,6 +451,22 @@ class HomeAssistantAPI:
         except Exception as e:
             logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
             return None
+
+# Initialize Home Assistant API
+def get_ha_config():
+    """Get Home Assistant configuration from add-on config"""
+    try:
+        if os.path.exists('/data/options.json'):
+            with open('/data/options.json', 'r') as f:
+                config = json.load(f)
+                ha_config = config.get('home_assistant', {})
+                return ha_config.get('url'), ha_config.get('token')
+    except Exception as e:
+        logger.error(f"Error loading HA config: {e}")
+    return None, None
+
+ha_url, ha_token = get_ha_config()
+ha_api = HomeAssistantAPI(ha_url, ha_token)
 
 @app.route('/')
 def index():
