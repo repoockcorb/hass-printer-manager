@@ -594,8 +594,23 @@ class PrintFarmDashboard {
         const modal = document.getElementById('camera-modal');
         const img   = document.getElementById('camera-stream');
 
-        // Ensure crossorigin is set so that WKWebView/Safari will display MJPEG correctly
-        img.setAttribute('crossorigin', 'anonymous');
+        // Remove any existing crossorigin attribute as it may cause issues with WKWebView
+        img.removeAttribute('crossorigin');
+        
+        // Try using a video element for better MJPEG support in WKWebView
+        const useVideoFallback = () => {
+            const video = document.createElement('video');
+            video.setAttribute('autoplay', '');
+            video.setAttribute('muted', '');
+            video.setAttribute('playsinline', '');
+            video.style.width = '100%';
+            video.style.height = 'auto';
+            video.style.borderRadius = '0 0 16px 16px';
+            
+            // Replace img with video element
+            img.parentNode.replaceChild(video, img);
+            return video;
+        };
 
         // Helper to clear any running snapshot timer
         const cleanup = () => {
@@ -611,30 +626,59 @@ class PrintFarmDashboard {
             load();
             this.snapshotTimer = setInterval(load, 1000);
         } else {
-            // Try MJPEG stream first
-            img.src = camProxy;
-
-            // Fallback: if the stream cannot be displayed (e.g., iOS WKWebView),
-            // switch to snapshot refresh mode after a short timeout.
-            const fallbackTimeout = setTimeout(() => {
-                // Only trigger fallback if the image size is still zero (not rendered)
-                if (img.naturalWidth === 0) {
-                    console.warn('MJPEG stream not rendering; falling back to snapshot mode');
-                    const load = () => img.src = `${camProxy}?snapshot&_ts=${Date.now()}`;
+            // Progressive fallback strategy for MJPEG streams
+            let currentElement = img;
+            let fallbackAttempt = 0;
+            
+            const tryNextFallback = () => {
+                fallbackAttempt++;
+                console.warn(`MJPEG fallback attempt ${fallbackAttempt}`);
+                
+                if (fallbackAttempt === 1) {
+                    // Attempt 1: Try video element instead of img
+                    currentElement = useVideoFallback();
+                    currentElement.src = camProxy;
+                    
+                    // Set up error handler for video
+                    currentElement.onerror = () => setTimeout(tryNextFallback, 2000);
+                    
+                } else if (fallbackAttempt === 2) {
+                    // Attempt 2: Use blob URL approach
+                    fetch(camProxy)
+                        .then(response => response.blob())
+                        .then(blob => {
+                            const url = URL.createObjectURL(blob);
+                            currentElement.src = url;
+                            
+                            // Clean up blob URL after a while
+                            setTimeout(() => URL.revokeObjectURL(url), 30000);
+                        })
+                        .catch(() => setTimeout(tryNextFallback, 2000));
+                        
+                } else {
+                    // Final fallback: Snapshot refresh mode
+                    console.warn('All MJPEG methods failed; switching to snapshot refresh');
+                    const load = () => currentElement.src = `${camProxy}?snapshot&_ts=${Date.now()}`;
                     load();
                     this.snapshotTimer = setInterval(load, 1000);
                 }
+            };
+            
+            // Start with img element and MJPEG stream
+            img.src = camProxy;
+            
+            // Set up initial timeout for first fallback
+            const initialTimeout = setTimeout(() => {
+                if (img.naturalWidth === 0) {
+                    tryNextFallback();
+                }
             }, 4000);
-
-            // Clear the timeout if image renders
-            img.onload = () => clearTimeout(fallbackTimeout);
+            
+            // Clear timeout if image loads successfully
+            img.onload = () => clearTimeout(initialTimeout);
             img.onerror = () => {
-                // On error, switch to snapshot refresh
-                console.warn('Error loading MJPEG stream; switching to snapshot mode');
-                clearTimeout(fallbackTimeout);
-                const load = () => img.src = `${camProxy}?snapshot&_ts=${Date.now()}`;
-                load();
-                this.snapshotTimer = setInterval(load, 1000);
+                clearTimeout(initialTimeout);
+                tryNextFallback();
             };
         }
 

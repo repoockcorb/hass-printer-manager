@@ -484,14 +484,27 @@ def debug_static():
 @app.route('/camera/<printer_name>')
 def proxy_camera(printer_name):
     """Reverse-proxy the MJPEG camera stream to avoid mixed-content issues"""
+    # Check if this is a snapshot request instead of a stream
+    is_snapshot_request = request.args.get('snapshot') is not None
+    
     printer_cfg = next((p for p in storage.get_printers() if p.get('name').lower().replace(' ','_')==printer_name.lower().replace(' ','_')), None)
     if not printer_cfg:
         return jsonify({'error':'printer not found'}),404
     cam_url = printer_cfg.get('camera_url')
     if not cam_url:
         return jsonify({'error':'camera_url not configured'}),404
+    
+    # If snapshot is requested but we have a dedicated snapshot_url, use that instead
+    if is_snapshot_request and printer_cfg.get('snapshot_url'):
+        return proxy_snapshot(printer_name)
+    
     try:
         # Accept self-signed certificates by skipping verification so the proxy still works over HTTPS.
+        headers = {}
+        if is_snapshot_request:
+            # For snapshot requests, we want a single JPEG frame
+            headers['Accept'] = 'image/jpeg'
+            
         upstream = requests.get(cam_url, stream=True, timeout=10, verify=False)
         upstream.raise_for_status()
     except Exception as e:
@@ -548,6 +561,44 @@ def proxy_camera(printer_name):
                     yield chunk
         finally:
             upstream.close()
+
+    # Handle snapshot requests differently
+    if is_snapshot_request:
+        # For snapshot mode, we return the first JPEG frame we can extract
+        try:
+            chunk_data = b''
+            for chunk in upstream.iter_content(chunk_size=4096):
+                chunk_data += chunk
+                # Look for JPEG start and end markers
+                start_idx = chunk_data.find(b'\xff\xd8')  # JPEG start
+                end_idx = chunk_data.find(b'\xff\xd9')    # JPEG end
+                
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    # Extract the JPEG frame
+                    jpeg_data = chunk_data[start_idx:end_idx+2]
+                    return Response(
+                        jpeg_data,
+                        content_type='image/jpeg',
+                        headers={
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0',
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Headers': '*'
+                        }
+                    )
+                    
+                # Prevent excessive buffering
+                if len(chunk_data) > 1024*1024:  # 1MB limit
+                    break
+                    
+        except Exception as e:
+            logger.error(f"Error extracting snapshot from stream: {e}")
+        finally:
+            upstream.close()
+            
+        # If we can't extract a frame, return an error
+        return jsonify({'error': 'Could not extract snapshot from stream'}), 502
 
     return Response(
         stream_with_context(generate()),
