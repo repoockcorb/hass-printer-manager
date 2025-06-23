@@ -131,44 +131,18 @@ class PrintFarmDashboard {
                 this.refreshAll();
             }
         });
-        
-        // Setup control buttons
-        const controlButtons = card.querySelectorAll('.btn-control');
-        console.log(`Found ${controlButtons.length} control buttons for ${printerName}`);
-        controlButtons.forEach(btn => {
-            console.log(`Setting up button with action: ${btn.getAttribute('data-action')}`);
-            btn.addEventListener('click', (e) => {
-                const action = e.target.closest('button').getAttribute('data-action');
-                console.log(`Button clicked for ${printerName}, action: ${action}`);
-                if (action === 'movement') {
-                    console.log(`Opening movement modal for ${printerName}`);
-                    this.showMovementModal(printerName);
-                } else {
-                    this.showControlModal(printerName, action);
-                }
-            });
-        });
     }
     
     async loadPrinters() {
         try {
-            console.log('Loading printers from API...');
-            console.log('Current URL:', window.location.href);
-            console.log('Request will be made to:', window.location.origin + '/api/printers');
-            
             const response = await fetch('api/printers');
-            console.log('Response status:', response.status);
-            console.log('Response ok:', response.ok);
-            
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
             const printerConfigs = await response.json();
-            console.log('Received printer configs:', printerConfigs);
             
             if (printerConfigs.length === 0) {
-                console.log('No printers configured');
                 this.showEmptyState();
                 return;
             }
@@ -188,11 +162,6 @@ class PrintFarmDashboard {
             
         } catch (error) {
             console.error('Error loading printers:', error);
-            console.error('Error details:', {
-                message: error.message,
-                stack: error.stack,
-                currentUrl: window.location.href
-            });
             this.showError(`Failed to load printers: ${error.message}`);
         }
     }
@@ -260,14 +229,10 @@ class PrintFarmDashboard {
             
             // Setup control buttons
             const controlButtons = card.querySelectorAll('.btn-control');
-            console.log(`Found ${controlButtons.length} control buttons for ${printerName}`);
             controlButtons.forEach(btn => {
-                console.log(`Setting up button with action: ${btn.getAttribute('data-action')}`);
                 btn.addEventListener('click', (e) => {
                     const action = e.target.closest('button').getAttribute('data-action');
-                    console.log(`Button clicked for ${printerName}, action: ${action}`);
                     if (action === 'movement') {
-                        console.log(`Opening movement modal for ${printerName}`);
                         this.showMovementModal(printerName);
                     } else {
                         this.showControlModal(printerName, action);
@@ -887,13 +852,8 @@ class PrintFarmDashboard {
     }
     
     showMovementModal(printerName) {
-        console.log(`showMovementModal called for: ${printerName}`);
-        
         const modal = document.getElementById('movement-modal');
         const title = document.getElementById('movement-modal-title');
-        
-        console.log('Movement modal element:', modal);
-        console.log('Movement modal title element:', title);
         
         if (!modal) {
             console.error('Movement modal not found in DOM!');
@@ -907,29 +867,21 @@ class PrintFarmDashboard {
         
         // Set title
         title.textContent = `${printerName} Movement Controls`;
-        console.log('Set modal title to:', title.textContent);
         
         // Store current printer
         this.currentMovementPrinter = printerName;
-        console.log('Set currentMovementPrinter to:', this.currentMovementPrinter);
         
         // Show modal
         modal.style.display = 'flex';
-        console.log('Set modal display to flex');
         
         // Reset distance selection to default
         const distanceButtons = document.querySelectorAll('.btn-distance');
-        console.log('Found distance buttons:', distanceButtons.length);
-        
         distanceButtons.forEach(btn => btn.classList.remove('active'));
-        const defaultButton = document.querySelector('.btn-distance[data-distance="0.1"]');
         
+        const defaultButton = document.querySelector('.btn-distance[data-distance="0.1"]');
         if (defaultButton) {
             defaultButton.classList.add('active');
             this.selectedDistance = 0.1;
-            console.log('Set default distance to 0.1mm');
-        } else {
-            console.error('Default distance button not found!');
         }
     }
     
