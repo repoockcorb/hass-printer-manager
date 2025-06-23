@@ -726,16 +726,16 @@ class PrintFarmDashboard {
                 
                 console.log('Loading image from URL:', imageUrl); // Debug log
                 
-                // Test if the URL is accessible by making a fetch request
-                try {
-                    const imageResponse = await fetch(imageUrl, { 
-                        method: 'HEAD',  // Just check if URL is accessible
-                        mode: 'no-cors'  // Avoid CORS issues for testing
-                    });
-                    console.log('Image URL accessibility test:', imageResponse.status || 'no-cors success');
-                } catch (urlError) {
-                    console.error('Image URL not accessible:', urlError);
-                }
+                // // Test if the URL is accessible by making a fetch request
+                // try {
+                //     const imageResponse = await fetch(imageUrl, { 
+                //         method: 'HEAD',  // Just check if URL is accessible
+                //         mode: 'no-cors'  // Avoid CORS issues for testing
+                //     });
+                //     console.log('Image URL accessibility test:', imageResponse.status || 'no-cors success');
+                // } catch (urlError) {
+                //     console.error('Image URL not accessible:', urlError);
+                // }
                 
                 stream.onload = () => {
                     loading.style.display = 'none';
