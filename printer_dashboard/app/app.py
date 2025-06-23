@@ -855,6 +855,36 @@ def get_ha_info():
         logger.error(f"Error in ha-info endpoint: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/debug/printer-config')
+def debug_printer_config():
+    """Debug endpoint to show current printer configurations"""
+    try:
+        printer_configs = []
+        for name, printer in printer_manager.printers.items():
+            printer_configs.append({
+                'name': name,
+                'type': printer.printer_type,
+                'url': printer.url,
+                'api_key': '***' if printer.api_key else None
+            })
+        
+        # Also load raw config from file
+        raw_config = []
+        if os.path.exists('/data/options.json'):
+            with open('/data/options.json', 'r') as f:
+                config = json.load(f)
+                raw_config = config.get('printers', [])
+        
+        return jsonify({
+            'active_printers': printer_configs,
+            'raw_config': raw_config,
+            'config_file_path': '/data/options.json'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in debug printer config: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/debug/config')
 def debug_config():
     """Debug endpoint to check printer configuration"""
@@ -984,6 +1014,253 @@ def test_gcode(printer_name):
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/direct-control/<host>/<int:port>/<action>', methods=['POST'])
+def direct_control(host, port, action):
+    """Direct control API that bypasses printer configuration
+    Usage: /api/direct-control/192.168.1.216/7125/home
+           /api/direct-control/192.168.1.216/7125/jog
+    """
+    try:
+        logger.info(f"Direct control request: {host}:{port} -> {action}")
+        
+        # Get additional parameters from request JSON
+        data = request.get_json() or {}
+        logger.info(f"Direct control request data: {data}")
+        
+        # Create temporary KlipperAPI instance for direct communication
+        temp_printer = KlipperAPI(
+            name=f"Direct-{host}",
+            printer_type='klipper',
+            url=f"http://{host}:{port}",
+            api_key=data.get('api_key')  # Optional API key from request
+        )
+        
+        if action == 'home':
+            axes = data.get('axes')  # Can be None for all axes, or specific axes like ['X', 'Y']
+            logger.info(f"Direct home action with axes: {axes}")
+            result = temp_printer.home_printer(axes)
+            
+        elif action == 'jog':
+            axis = data.get('axis')  # Required: 'X', 'Y', or 'Z'
+            distance = data.get('distance')  # Required: distance in mm
+            logger.info(f"Direct jog action with axis={axis}, distance={distance}")
+            
+            if not axis or distance is None:
+                return jsonify({'success': False, 'error': 'Missing axis or distance for jog command'}), 400
+                
+            result = temp_printer.jog_printer(axis, distance)
+            
+        elif action == 'gcode':
+            gcode = data.get('gcode')  # Custom G-code command
+            logger.info(f"Direct G-code: {gcode}")
+            
+            if not gcode:
+                return jsonify({'success': False, 'error': 'Missing gcode parameter'}), 400
+                
+            result = temp_printer._send_gcode(gcode)
+            result = {'success': True, 'result': result} if result else {'success': False, 'error': 'G-code command failed'}
+            
+        else:
+            return jsonify({'success': False, 'error': 'Invalid action. Supported: home, jog, gcode'}), 400
+        
+        logger.info(f"Direct control result: {result}")
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error in direct control {host}:{port}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/direct-status/<host>/<int:port>')
+def direct_status(host, port):
+    """Get status directly from Moonraker instance
+    Usage: /api/direct-status/192.168.1.216/7125
+    """
+    try:
+        logger.info(f"Direct status request: {host}:{port}")
+        
+        # Optional API key from query parameter
+        api_key = request.args.get('api_key')
+        
+        # Create temporary KlipperAPI instance
+        temp_printer = KlipperAPI(
+            name=f"Direct-{host}",
+            printer_type='klipper',
+            url=f"http://{host}:{port}",
+            api_key=api_key
+        )
+        
+        status = temp_printer.get_status()
+        return jsonify(status)
+        
+    except Exception as e:
+        logger.error(f"Error getting direct status from {host}:{port}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/direct-test')
+def direct_test():
+    """Simple test page for direct control API"""
+    return '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Direct Moonraker Control Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        input, button { padding: 8px; margin: 5px; }
+        button { background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 3px; font-family: monospace; }
+        .error { background: #f8d7da; color: #721c24; }
+        .success { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Direct Moonraker Control Test</h1>
+        
+        <div class="section">
+            <h3>Connection Settings</h3>
+            <input type="text" id="host" placeholder="IP Address" value="192.168.1.216">
+            <input type="number" id="port" placeholder="Port" value="7125">
+            <input type="text" id="apiKey" placeholder="API Key (optional)">
+        </div>
+        
+        <div class="section">
+            <h3>Test Status</h3>
+            <button onclick="testStatus()">Get Status</button>
+            <div id="statusResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>Home Commands</h3>
+            <button onclick="homeAll()">Home All</button>
+            <button onclick="homeAxis('X')">Home X</button>
+            <button onclick="homeAxis('Y')">Home Y</button>
+            <button onclick="homeAxis('Z')">Home Z</button>
+            <div id="homeResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>Jog Commands</h3>
+            <button onclick="jog('X', 1)">X +1mm</button>
+            <button onclick="jog('X', -1)">X -1mm</button>
+            <button onclick="jog('Y', 1)">Y +1mm</button>
+            <button onclick="jog('Y', -1)">Y -1mm</button>
+            <button onclick="jog('Z', 0.1)">Z +0.1mm</button>
+            <button onclick="jog('Z', -0.1)">Z -0.1mm</button>
+            <div id="jogResult" class="result"></div>
+        </div>
+        
+        <div class="section">
+            <h3>Custom G-code</h3>
+            <input type="text" id="customGcode" placeholder="Enter G-code (e.g., M115)" value="M115">
+            <button onclick="sendGcode()">Send G-code</button>
+            <div id="gcodeResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        function getBaseParams() {
+            return {
+                host: document.getElementById('host').value,
+                port: document.getElementById('port').value,
+                apiKey: document.getElementById('apiKey').value
+            };
+        }
+        
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = 'result ' + (isError ? 'error' : 'success');
+        }
+        
+        async function testStatus() {
+            const params = getBaseParams();
+            try {
+                const url = `/api/direct-status/${params.host}/${params.port}${params.apiKey ? '?api_key=' + params.apiKey : ''}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                showResult('statusResult', data, !response.ok);
+            } catch (error) {
+                showResult('statusResult', {error: error.message}, true);
+            }
+        }
+        
+        async function homeAll() {
+            const params = getBaseParams();
+            try {
+                const url = `/api/direct-control/${params.host}/${params.port}/home`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({api_key: params.apiKey})
+                });
+                const data = await response.json();
+                showResult('homeResult', data, !response.ok);
+            } catch (error) {
+                showResult('homeResult', {error: error.message}, true);
+            }
+        }
+        
+        async function homeAxis(axis) {
+            const params = getBaseParams();
+            try {
+                const url = `/api/direct-control/${params.host}/${params.port}/home`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({axes: [axis], api_key: params.apiKey})
+                });
+                const data = await response.json();
+                showResult('homeResult', data, !response.ok);
+            } catch (error) {
+                showResult('homeResult', {error: error.message}, true);
+            }
+        }
+        
+        async function jog(axis, distance) {
+            const params = getBaseParams();
+            try {
+                const url = `/api/direct-control/${params.host}/${params.port}/jog`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({axis, distance, api_key: params.apiKey})
+                });
+                const data = await response.json();
+                showResult('jogResult', data, !response.ok);
+            } catch (error) {
+                showResult('jogResult', {error: error.message}, true);
+            }
+        }
+        
+        async function sendGcode() {
+            const params = getBaseParams();
+            const gcode = document.getElementById('customGcode').value;
+            if (!gcode) return;
+            
+            try {
+                const url = `/api/direct-control/${params.host}/${params.port}/gcode`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({gcode, api_key: params.apiKey})
+                });
+                const data = await response.json();
+                showResult('gcodeResult', data, !response.ok);
+            } catch (error) {
+                showResult('gcodeResult', {error: error.message}, true);
+            }
+        }
+    </script>
+</body>
+</html>
+    '''
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
