@@ -190,40 +190,52 @@ class OctoPrintAPI(PrinterAPI):
                     'error': 'Cannot connect to printer'
                 }
             
-            # Parse temperature data
-            temps = printer_status.get('temperature', {})
+            # Normalize missing data
+            if printer_status is None:
+                printer_status = {}
+            if job_status is None:
+                job_status = {}
+            
+            # Parse temperature data safely
+            temps = printer_status.get('temperature', {}) if isinstance(printer_status, dict) else {}
             tool0 = temps.get('tool0', {})
             bed = temps.get('bed', {})
             
+            def safe_round(value, digits=1):
+                try:
+                    return round(float(value), digits)
+                except (TypeError, ValueError):
+                    return 0
+            
             # Parse job data
-            job = job_status.get('job', {})
-            progress = job_status.get('progress', {})
-            state = printer_status.get('state', {})
+            job = job_status.get('job', {}) if isinstance(job_status, dict) else {}
+            progress = job_status.get('progress', {}) if isinstance(job_status, dict) else {}
+            state = printer_status.get('state', {}) if isinstance(printer_status, dict) else {}
             
             # Calculate remaining time
-            remaining = progress.get('printTimeLeft')
+            remaining = progress.get('printTimeLeft') or 0
             remaining_formatted = self._format_time(remaining) if remaining else "Unknown"
             
             return {
                 'name': self.name,
                 'type': 'octoprint',
                 'online': True,
-                'state': state.get('text', 'Unknown').lower(),
-                'progress': round(progress.get('completion', 0), 1),
-                'file': job.get('file', {}).get('name', ''),
-                'print_time': self._format_time(progress.get('printTime', 0)),
+                'state': state.get('text', 'unknown').lower() if isinstance(state, dict) else 'unknown',
+                'progress': safe_round(progress.get('completion', 0)),
+                'file': job.get('file', {}).get('name', '') if isinstance(job, dict) else '',
+                'print_time': self._format_time(progress.get('printTime', 0) or 0),
                 'remaining_time': remaining_formatted,
                 'extruder_temp': {
-                    'actual': round(tool0.get('actual', 0), 1),
-                    'target': round(tool0.get('target', 0), 1)
+                    'actual': safe_round(tool0.get('actual', 0)),
+                    'target': safe_round(tool0.get('target', 0))
                 },
                 'bed_temp': {
-                    'actual': round(bed.get('actual', 0), 1),
-                    'target': round(bed.get('target', 0), 1)
+                    'actual': safe_round(bed.get('actual', 0)),
+                    'target': safe_round(bed.get('target', 0))
                 },
-                'position': state.get('position', {'x': 0, 'y': 0, 'z': 0}),
-                'message': state.get('text', ''),
-                'ready': state.get('flags', {}).get('ready', False)
+                'position': state.get('position', {'x': 0, 'y': 0, 'z': 0}) if isinstance(state, dict) else {'x':0,'y':0,'z':0},
+                'message': state.get('text', '') if isinstance(state, dict) else '',
+                'ready': state.get('flags', {}).get('ready', False) if isinstance(state, dict) else False
             }
             
         except Exception as e:
