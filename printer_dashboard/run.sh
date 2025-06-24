@@ -48,24 +48,50 @@ mkdir -p /data/gcode_files
 chmod 755 /data/gcode_files
 
 # Change to the app directory (where files are located)
-cd /app
-echo "[INFO] Current directory: $(pwd)"
-echo "[INFO] Files in directory: $(ls -la)"
+echo "[DEBUG] Before changing directory - current: $(pwd)"
+echo "[DEBUG] Contents of /app:"
+ls -la /app/ 2>/dev/null || echo "Cannot list /app directory"
+
+cd /app || {
+    echo "[ERROR] Failed to change to /app directory"
+    echo "[DEBUG] Available directories in root:"
+    ls -la /
+    exit 1
+}
+
+echo "[INFO] Successfully changed to directory: $(pwd)"
+echo "[INFO] Files in current directory:"
+ls -la
 
 # Install Python dependencies
 echo "[INFO] Installing dependencies..."
+echo "[DEBUG] Looking for requirements.txt in: $(pwd)"
+echo "[DEBUG] Current directory contents:"
+ls -la
+
 if [ -f "requirements.txt" ]; then
-    pip install --no-cache-dir -r requirements.txt
+    echo "[INFO] Found requirements.txt, installing packages..."
+    pip install --no-cache-dir -r requirements.txt || {
+        echo "[ERROR] Failed to install requirements"
+        echo "[DEBUG] Current working directory: $(pwd)"
+        echo "[DEBUG] Requirements file exists: $(test -f requirements.txt && echo 'YES' || echo 'NO')"
+        echo "[DEBUG] Requirements file content:"
+        cat requirements.txt 2>/dev/null || echo "Could not read requirements.txt"
+        exit 1
+    }
+    echo "[INFO] Dependencies installed successfully"
 else
     echo "[ERROR] requirements.txt not found in $(pwd)"
-    echo "[INFO] Available files: $(ls -la)"
+    echo "[INFO] Available files:"
+    ls -la
+    echo "[DEBUG] Searching for requirements.txt in /app hierarchy:"
+    find /app -name "requirements.txt" 2>/dev/null || echo "No requirements.txt found in /app"
     exit 1
 fi
 
 # Start the Flask application
 echo "[INFO] Starting Print Farm Dashboard backend..."
-cd app
-echo "[INFO] App directory contents: $(ls -la)"
+echo "[INFO] Current directory contents: $(ls -la)"
 echo "[INFO] Starting Flask app..."
 python app.py &
 FLASK_PID=$!
