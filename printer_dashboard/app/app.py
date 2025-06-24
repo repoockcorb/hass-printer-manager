@@ -1526,7 +1526,28 @@ def get_thumbnail(printer_name):
         headers = {}
 
         if printer.printer_type == 'klipper':
-            # Moonraker metadata provides thumbnail relative paths
+            # Use Moonraker's direct thumbnail endpoint
+            thumbnail_endpoint = f"server/files/thumbnails?filename={urllib.parse.quote(file_name)}"
+            try:
+                # Make request to Moonraker thumbnail endpoint
+                headers = {}
+                if printer.api_key:
+                    headers['Authorization'] = f'Bearer {printer.api_key}'
+                
+                thumbnail_url = f"{printer.url}/{thumbnail_endpoint}"
+                logger.info(f"Fetching Klipper thumbnail from: {thumbnail_url}")
+                
+                response = requests.get(thumbnail_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    # Return the thumbnail directly
+                    content_type = response.headers.get('Content-Type', 'image/png')
+                    return Response(response.content, mimetype=content_type)
+                else:
+                    logger.warning(f"Klipper thumbnail not found for {file_name}, status: {response.status_code}")
+            except Exception as e:
+                logger.error(f"Error fetching Klipper thumbnail for {file_name}: {e}")
+                
+            # Fallback to metadata approach if direct thumbnail fails
             meta_endpoint = f"server/files/metadata?filename={urllib.parse.quote(file_name)}"
             meta = printer._make_request(meta_endpoint)
             thumbnails = (meta or {}).get('result', {}).get('metadata', {}).get('thumbnails', [])
