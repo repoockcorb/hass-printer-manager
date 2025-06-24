@@ -52,6 +52,10 @@
                             <option value="octoprint">OctoPrint</option>
                         </select>
                     </div>
+                    <button id="upload-btn" class="btn btn-secondary">
+                        <i class="fas fa-upload"></i>
+                        Upload
+                    </button>
                     <button id="refresh-btn" class="btn btn-primary">
                         <i class="fas fa-sync-alt"></i>
                         Refresh
@@ -345,6 +349,26 @@
             <div class="modal-footer">
                 <button id="modal-cancel" class="btn btn-secondary">Cancel</button>
                 <button id="modal-confirm" class="btn btn-primary">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width:480px;">
+            <div class="modal-header">
+                <h3>Upload G-code</h3>
+                <button class="modal-close" id="upload-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="file" id="gcode-file-input" accept=".gcode,.gco,.gc" />
+                <label style="margin-top:1rem; display:block;">Select Printer</label>
+                <select id="printer-select" style="width:100%; padding:0.5rem; border-radius:6px;"></select>
+                <div id="upload-progress" style="margin-top:1rem; display:none;">Uploading...</div>
+                <div id="upload-error" style="color:#f87171; margin-top:0.5rem; display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="upload-confirm" class="btn btn-primary">Upload & Send</button>
             </div>
         </div>
     </div>

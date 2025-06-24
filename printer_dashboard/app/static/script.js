@@ -21,6 +21,14 @@ class PrintFarmDashboard {
         this.currentMovementPrinter = null; // Track which printer's movement modal is open
         this.isMovementInProgress = false; // Track movement command progress
         
+        // File upload modal elements (query DOM early)
+        this.uploadModal = document.getElementById('upload-modal');
+        this.uploadBtn = document.getElementById('upload-btn');
+        this.uploadCloseBtn = document.getElementById('upload-modal-close');
+        this.uploadConfirmBtn = document.getElementById('upload-confirm');
+        this.gcodeFileInput = document.getElementById('gcode-file-input');
+        this.printerSelect = document.getElementById('printer-select');
+
         this.init();
     }
     
@@ -136,11 +144,26 @@ class PrintFarmDashboard {
                 this.hideModal();
                 this.hideCameraModal();
                 this.hideMovementModal();
+                this.hideUploadModal();
             } else if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 this.refreshAll();
             }
         });
+
+        // Upload button
+        if (this.uploadBtn) {
+            this.uploadBtn.addEventListener('click', () => this.showUploadModal());
+        }
+
+        if (this.uploadCloseBtn) {
+            this.uploadCloseBtn.addEventListener('click', () => this.hideUploadModal());
+        }
+
+        // Confirm upload
+        if (this.uploadConfirmBtn) {
+            this.uploadConfirmBtn.addEventListener('click', () => this.uploadAndSendGcode());
+        }
     }
     
     async loadPrinters() {
@@ -304,10 +327,11 @@ class PrintFarmDashboard {
         const progressFill = card.querySelector('.progress-fill');
         const progressText = card.querySelector('.progress-text');
         
-        if (status.file && status.progress > 0) {
+        if (status.file) {
             fileName.textContent = status.file;
-            progressFill.style.width = `${status.progress}%`;
-            progressText.textContent = `${status.progress}%`;
+            const progVal = (status.progress !== undefined && status.progress !== null) ? status.progress : 0;
+            progressFill.style.width = `${progVal}%`;
+            progressText.textContent = `${progVal}%`;
 
             // Load thumbnail if file changed
             if (printer.thumbnailFile !== status.file) {
@@ -1164,6 +1188,78 @@ class PrintFarmDashboard {
             }
         } catch (error) {
             console.error(`Error loading thumbnail for ${printerName}:`, error);
+        }
+    }
+
+    /* =================== Upload Modal =================== */
+    showUploadModal() {
+        if (!this.uploadModal) return;
+        this.populatePrinterSelect();
+        this.uploadModal.style.display = 'flex';
+    }
+
+    hideUploadModal() {
+        if (!this.uploadModal) return;
+        this.uploadModal.style.display = 'none';
+        // Reset form
+        if (this.gcodeFileInput) this.gcodeFileInput.value = '';
+        document.getElementById('upload-progress').style.display = 'none';
+        document.getElementById('upload-error').style.display = 'none';
+    }
+
+    populatePrinterSelect() {
+        if (!this.printerSelect) return;
+        this.printerSelect.innerHTML = '';
+        for (const [name] of this.printers.entries()) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            this.printerSelect.appendChild(opt);
+        }
+    }
+
+    async uploadAndSendGcode() {
+        const file = this.gcodeFileInput.files[0];
+        const printer = this.printerSelect.value;
+        const progressEl = document.getElementById('upload-progress');
+        const errorEl = document.getElementById('upload-error');
+        if (!file) {
+            errorEl.textContent = 'Please select a file';
+            errorEl.style.display = 'block';
+            return;
+        }
+        errorEl.style.display = 'none';
+        progressEl.style.display = 'block';
+
+        try {
+            // 1. Upload file to server
+            const formData = new FormData();
+            formData.append('file', file);
+            const uploadResp = await fetch('api/gcode/upload', { method: 'POST', body: formData });
+            const uploadResJson = await uploadResp.json();
+            if (!uploadResp.ok || !uploadResJson.success) {
+                throw new Error(uploadResJson.error || 'Upload failed');
+            }
+            const fileName = uploadResJson.file;
+
+            // 2. Send file to printer
+            const sendResp = await fetch('api/gcode/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ printer, file: fileName, start: true })
+            });
+            const sendJson = await sendResp.json();
+            if (!sendResp.ok || !sendJson.success) {
+                throw new Error(sendJson.error || 'Send failed');
+            }
+
+            this.showNotification(`File sent to ${printer} successfully`, 'success');
+            this.hideUploadModal();
+        } catch (err) {
+            console.error('Upload error', err);
+            errorEl.textContent = err.message;
+            errorEl.style.display = 'block';
+            progressEl.style.display = 'none';
         }
     }
 }

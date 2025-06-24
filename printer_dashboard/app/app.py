@@ -11,12 +11,19 @@ from requests.exceptions import RequestException, Timeout
 import threading
 import time
 import urllib.parse
+from werkzeug.utils import secure_filename
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
+
+# Directory to store uploaded gcode files (persistent in HA add-on)
+GCODE_STORAGE_DIR = '/data/gcode_files'
+
+# Ensure storage directory exists
+os.makedirs(GCODE_STORAGE_DIR, exist_ok=True)
 
 class PrinterAPI:
     """Base class for printer API interactions"""
@@ -1485,6 +1492,114 @@ def get_thumbnail(printer_name):
     except Exception as e:
         logger.error(f"Error fetching thumbnail for {printer_name}: {e}")
         return jsonify({'error': str(e)}), 500
+
+############################################
+# G-code upload and dispatch endpoints
+############################################
+
+ALLOWED_GCODE_EXT = {'.gcode', '.gco', '.gc'}
+
+def _is_allowed_gcode(filename: str) -> bool:
+    _, ext = os.path.splitext(filename.lower())
+    return ext in ALLOWED_GCODE_EXT
+
+@app.route('/api/gcode/files')
+def list_gcode_files():
+    """Return list of gcode files available on the server."""
+    try:
+        files = []
+        for fname in os.listdir(GCODE_STORAGE_DIR):
+            if _is_allowed_gcode(fname):
+                size = os.path.getsize(os.path.join(GCODE_STORAGE_DIR, fname))
+                files.append({'name': fname, 'size': size})
+        return jsonify(sorted(files, key=lambda f: f['name'].lower()))
+    except Exception as e:
+        logger.error(f"Error listing gcode files: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/gcode/upload', methods=['POST'])
+def upload_gcode():
+    """Upload a gcode file to the server storage."""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file part'}), 400
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'success': False, 'error': 'No selected file'}), 400
+
+        filename = secure_filename(file.filename)
+        if not _is_allowed_gcode(filename):
+            return jsonify({'success': False, 'error': 'Invalid file extension'}), 400
+
+        save_path = os.path.join(GCODE_STORAGE_DIR, filename)
+        file.save(save_path)
+        logger.info(f"Saved uploaded gcode to {save_path}")
+        return jsonify({'success': True, 'file': filename})
+    except Exception as e:
+        logger.error(f"Error uploading gcode: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/gcode/send', methods=['POST'])
+def send_gcode_to_printer():
+    """Send an existing gcode file to a specified printer and optionally start the print."""
+    try:
+        data = request.get_json() or {}
+        printer_name = data.get('printer')
+        file_name = data.get('file')
+        start_print = bool(data.get('start', True))
+
+        if not printer_name or not file_name:
+            return jsonify({'success': False, 'error': 'Missing printer or file parameter'}), 400
+
+        if printer_name not in printer_manager.printers:
+            return jsonify({'success': False, 'error': 'Printer not found'}), 404
+
+        local_path = os.path.join(GCODE_STORAGE_DIR, file_name)
+        if not os.path.isfile(local_path):
+            return jsonify({'success': False, 'error': 'File not found on server'}), 404
+
+        printer = printer_manager.printers[printer_name]
+
+        with open(local_path, 'rb') as f:
+            files = {'file': (file_name, f, 'application/octet-stream')}
+            if printer.printer_type == 'klipper':
+                headers = {}
+                if printer.api_key:
+                    headers['Authorization'] = f'Bearer {printer.api_key}'
+                upload_url = f"{printer.url}/server/files/upload"
+                logger.info(f"Uploading {file_name} to {printer_name} at {upload_url}")
+                resp = requests.post(upload_url, headers=headers, files=files, timeout=120)
+                resp.raise_for_status()
+                if start_print:
+                    # start the print
+                    start_url = f"{printer.url}/printer/print/start"
+                    data_json = {'filename': file_name}
+                    req_headers = headers.copy()
+                    req_headers['Content-Type'] = 'application/json'
+                    requests.post(start_url, headers=req_headers, json=data_json, timeout=10)
+            elif printer.printer_type == 'octoprint':
+                headers = {'X-Api-Key': printer.api_key} if printer.api_key else {}
+                upload_url = f"{printer.url}/api/files/local"
+                logger.info(f"Uploading {file_name} to OctoPrint {printer_name}")
+                resp = requests.post(upload_url, headers=headers, files=files, timeout=120)
+                resp.raise_for_status()
+                if start_print:
+                    select_url = f"{printer.url}/api/job"
+                    job_data = {'command': 'select', 'print': True, 'file': file_name}
+                    req_headers = headers.copy()
+                    req_headers['Content-Type'] = 'application/json'
+                    requests.post(select_url, headers=req_headers, json=job_data, timeout=10)
+            else:
+                return jsonify({'success': False, 'error': 'Unsupported printer type'}), 400
+
+        return jsonify({'success': True})
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"HTTP error sending gcode to printer: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 502
+    except Exception as e:
+        logger.error(f"Error sending gcode to printer: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
