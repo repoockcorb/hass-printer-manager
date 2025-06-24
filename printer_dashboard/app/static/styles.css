@@ -1236,4 +1236,7 @@ body {
 
 .btn-delete-icon:hover {
     background: #dc2626;
-} 
+}
+
+.list-header span:first-child { color:#e0e6ed; font-weight:600; }
+.file-count { font-size:0.8rem; } 
