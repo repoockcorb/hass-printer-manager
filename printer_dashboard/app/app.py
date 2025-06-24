@@ -638,12 +638,31 @@ class FileManager:
     """Manages uploaded G-code files"""
     
     def __init__(self):
-        self.upload_dir = '/data/gcode_files'
+        # For Home Assistant add-on, use /data directory which is persistent
+        if os.path.exists('/data'):
+            # Home Assistant add-on environment
+            self.upload_dir = '/data/gcode_files'
+        else:
+            # Development/standalone environment
+            self.upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+        
         self.files = {}  # id -> GCodeFile
         self.max_files = 50  # Maximum number of files to keep
         
-        # Create upload directory
-        os.makedirs(self.upload_dir, exist_ok=True)
+        # Create upload directory with proper error handling
+        try:
+            os.makedirs(self.upload_dir, exist_ok=True)
+            # Set proper permissions for Home Assistant
+            if os.path.exists('/data'):
+                os.chmod(self.upload_dir, 0o755)
+            logger.info(f"File upload directory created/verified: {self.upload_dir}")
+        except Exception as e:
+            logger.error(f"Failed to create upload directory {self.upload_dir}: {e}")
+            # Fallback to temp directory
+            import tempfile
+            self.upload_dir = os.path.join(tempfile.gettempdir(), 'printer_dashboard_files')
+            os.makedirs(self.upload_dir, exist_ok=True)
+            logger.info(f"Using fallback upload directory: {self.upload_dir}")
         
         # Load existing files
         self._load_existing_files()
@@ -665,9 +684,22 @@ class FileManager:
     
     def upload_file(self, file_obj, filename):
         """Upload and process a new G-code file"""
+        filepath = None
         try:
+            # Validate upload directory
+            if not os.path.exists(self.upload_dir):
+                logger.error(f"Upload directory does not exist: {self.upload_dir}")
+                raise Exception(f"Upload directory not available: {self.upload_dir}")
+            
+            if not os.access(self.upload_dir, os.W_OK):
+                logger.error(f"Upload directory is not writable: {self.upload_dir}")
+                raise Exception(f"Upload directory not writable: {self.upload_dir}")
+            
             # Secure the filename
             filename = secure_filename(filename)
+            if not filename:
+                raise Exception("Invalid filename after security filtering")
+                
             if not filename.endswith('.gcode'):
                 filename += '.gcode'
             
@@ -676,9 +708,19 @@ class FileManager:
             unique_filename = f"{base_name}_{int(time.time())}{ext}"
             filepath = os.path.join(self.upload_dir, unique_filename)
             
+            logger.info(f"Saving file to: {filepath}")
+            
             # Save file
             file_obj.save(filepath)
+            
+            if not os.path.exists(filepath):
+                raise Exception(f"File was not saved successfully: {filepath}")
+                
             file_size = os.path.getsize(filepath)
+            if file_size == 0:
+                raise Exception("Uploaded file is empty")
+            
+            logger.info(f"File saved successfully, size: {file_size} bytes")
             
             # Create GCodeFile object
             gcode_file = GCodeFile(filename, filepath, file_size)
@@ -696,11 +738,18 @@ class FileManager:
             # Clean up old files if needed
             self._cleanup_old_files()
             
-            logger.info(f"Uploaded G-code file: {filename} ({file_size} bytes)")
+            logger.info(f"Uploaded G-code file: {filename} ({file_size} bytes) with ID: {gcode_file.id}")
             return gcode_file
             
         except Exception as e:
-            logger.error(f"Error uploading file {filename}: {e}")
+            logger.error(f"Error uploading file {filename}: {e}", exc_info=True)
+            # Clean up partial file if it exists
+            if filepath and os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                    logger.info(f"Cleaned up partial file: {filepath}")
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to clean up partial file {filepath}: {cleanup_error}")
             raise
     
     def _find_duplicate(self, file_hash):
@@ -1015,6 +1064,12 @@ def index():
     logger.info("Serving main dashboard page")
     return render_template('index.html')
 
+@app.route('/debug')
+def debug():
+    """Debug page for testing file uploads"""
+    logger.info("Serving debug page")
+    return render_template('debug.html')
+
 @app.route('/api/printers')
 def get_printers():
     """API endpoint to get all printer configurations"""
@@ -1100,6 +1155,12 @@ def health_check():
         'status': 'healthy', 
         'printers_count': len(printer_manager.printers),
         'last_update': max(printer_manager.last_update.values()).isoformat() if printer_manager.last_update else None,
+        'file_manager': {
+            'upload_dir': file_manager.upload_dir,
+            'upload_dir_exists': os.path.exists(file_manager.upload_dir),
+            'upload_dir_writable': os.access(file_manager.upload_dir, os.W_OK) if os.path.exists(file_manager.upload_dir) else False,
+            'files_count': len(file_manager.get_all_files())
+        },
         'request_info': {
             'url': request.url,
             'host': request.host,
@@ -1711,18 +1772,27 @@ def get_files():
 def upload_file():
     """Upload a new G-code file"""
     try:
+        logger.info("File upload request received")
+        
         if 'file' not in request.files:
-            return jsonify({'error': 'No file provided'}), 400
+            logger.warning("No file provided in upload request")
+            return jsonify({'success': False, 'error': 'No file provided'}), 400
         
         file_obj = request.files['file']
         if file_obj.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
+            logger.warning("Empty filename in upload request")
+            return jsonify({'success': False, 'error': 'No file selected'}), 400
         
         if not file_obj.filename.lower().endswith('.gcode'):
-            return jsonify({'error': 'Only .gcode files are allowed'}), 400
+            logger.warning(f"Invalid file type: {file_obj.filename}")
+            return jsonify({'success': False, 'error': 'Only .gcode files are allowed'}), 400
+        
+        logger.info(f"Starting upload of file: {file_obj.filename}")
         
         # Upload and process file
         gcode_file = file_manager.upload_file(file_obj, file_obj.filename)
+        
+        logger.info(f"File uploaded successfully: {file_obj.filename}")
         
         return jsonify({
             'success': True,
@@ -1731,8 +1801,8 @@ def upload_file():
         })
         
     except Exception as e:
-        logger.error(f"Error uploading file: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error uploading file: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': f'Upload failed: {str(e)}'}), 500
 
 @app.route('/api/files/<file_id>', methods=['DELETE'])
 def delete_file(file_id):
@@ -1789,4 +1859,25 @@ def download_file(file_id):
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
-    app.run(host='127.0.0.1', port=5001, debug=False) 
+    
+    try:
+        # Configure for Home Assistant add-on environment
+        host = os.environ.get('HOST', '0.0.0.0')
+        port = int(os.environ.get('PORT', 5001))
+        debug = os.environ.get('DEBUG', 'False').lower() == 'true'
+        
+        # Test file manager initialization
+        logger.info(f"File manager upload directory: {file_manager.upload_dir}")
+        logger.info(f"Upload directory exists: {os.path.exists(file_manager.upload_dir)}")
+        logger.info(f"Upload directory writable: {os.access(file_manager.upload_dir, os.W_OK)}")
+        
+        # List existing files
+        existing_files = file_manager.get_all_files()
+        logger.info(f"Found {len(existing_files)} existing files")
+        
+        logger.info(f"Starting Flask server on {host}:{port} (debug={debug})")
+        app.run(host=host, port=port, debug=debug)
+        
+    except Exception as e:
+        logger.error(f"Failed to start Flask app: {e}", exc_info=True)
+        raise 

@@ -14,7 +14,8 @@ RUN apk add --no-cache \
 # Create app directory
 RUN mkdir -p /app
 
-# Copy application files
+# Copy all application files to /app
+COPY requirements.txt /app/
 COPY app/ /app/
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY run.sh /
