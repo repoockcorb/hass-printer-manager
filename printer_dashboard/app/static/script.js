@@ -884,10 +884,11 @@ class PrintFarmDashboard {
             console.log('Using base URL:', baseUrl); // Debug log
             
             if (snapshotData.snapshot_url) {
-                // Use the snapshot URL directly without any modifications
-                const imageUrl = snapshotData.snapshot_url;
+                // Add timestamp to the snapshot URL to prevent caching
+                const imageUrl = new URL(snapshotData.snapshot_url);
+                imageUrl.searchParams.set('_', timestamp);
                 
-                console.log('Loading image from URL:', imageUrl); // Debug log
+                console.log('Loading image from URL:', imageUrl.toString()); // Debug log
                 
                 stream.onload = () => {
                     loading.style.display = 'none';
@@ -901,12 +902,12 @@ class PrintFarmDashboard {
                     error.style.display = 'flex';
                     error.querySelector('p').textContent = 'Failed to load camera image';
                     console.error('❌ Camera image failed to load:', e); // Debug log
-                    console.error('Failed URL:', imageUrl); // Debug log
+                    console.error('Failed URL:', imageUrl.toString()); // Debug log
                     console.error('Current time:', new Date().toLocaleTimeString());
                 };
                 
-                // Set the image source directly
-                stream.src = imageUrl;
+                // Set the image source with the timestamped URL
+                stream.src = imageUrl.toString();
                 
                 // Start auto-refresh to get fresh images
                 this.startCameraRefresh();
