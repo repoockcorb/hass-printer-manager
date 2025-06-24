@@ -1202,4 +1202,38 @@ body {
     color: #e0e6ed;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
+}
+
+/* Icon buttons */
+.btn-icon {
+    padding: 0.45rem 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.2s;
+}
+
+.btn-icon:hover {
+    transform: translateY(-1px);
+}
+
+.btn-send-icon {
+    background: #22c55e; /* emerald-500 */
+}
+
+.btn-send-icon:hover {
+    background: #16a34a;
+}
+
+.btn-delete-icon {
+    background: #ef4444; /* red-500 */
+}
+
+.btn-delete-icon:hover {
+    background: #dc2626;
 } 

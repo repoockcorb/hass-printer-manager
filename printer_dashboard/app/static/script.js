@@ -182,6 +182,15 @@ class PrintFarmDashboard {
                 this.sendExistingFile(file);
             }
         });
+
+        // Delete file buttons (delegated)
+        document.addEventListener('click', (e) => {
+            const delBtn = e.target.closest('.btn-delete-file');
+            if (delBtn) {
+                const file = delBtn.getAttribute('data-file');
+                this.deleteFile(file);
+            }
+        });
     }
     
     async loadPrinters() {
@@ -1308,13 +1317,19 @@ class PrintFarmDashboard {
                 sizeEl.style.color = '#94a3b8';
 
                 const sendBtn = document.createElement('button');
-                sendBtn.className = 'btn btn-primary btn-send-file';
-                sendBtn.textContent = 'Send';
+                sendBtn.className = 'btn-icon btn-send-icon btn-send-file';
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
                 sendBtn.setAttribute('data-file', f.name);
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn-icon btn-delete-icon btn-delete-file';
+                delBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                delBtn.setAttribute('data-file', f.name);
 
                 row.appendChild(thumb);
                 row.appendChild(nameEl);
                 row.appendChild(sizeEl);
+                row.appendChild(delBtn);
                 row.appendChild(sendBtn);
                 container.appendChild(row);
             });
