@@ -1247,7 +1247,7 @@ class FileManager {
 
     async loadFiles() {
         try {
-            const response = await fetch('/api/files');
+            const response = await fetch('api/files');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -1262,7 +1262,7 @@ class FileManager {
 
     async loadPrinters() {
         try {
-            const response = await fetch('/api/printers');
+            const response = await fetch('api/printers');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -1415,7 +1415,7 @@ class FileManager {
         try {
             this.showUploadProgress(0);
             
-            const response = await fetch('/api/files/upload', {
+            const response = await fetch('api/files/upload', {
                 method: 'POST',
                 body: formData
             });
@@ -1467,7 +1467,7 @@ class FileManager {
         }
 
         try {
-            const response = await fetch(`/api/files/${fileId}`, {
+            const response = await fetch(`api/files/${fileId}`, {
                 method: 'DELETE'
             });
 
@@ -1490,7 +1490,7 @@ class FileManager {
         if (!file) return;
 
         const link = document.createElement('a');
-        link.href = `/api/files/${fileId}/download`;
+        link.href = `api/files/${fileId}/download`;
         link.download = file.filename;
         document.body.appendChild(link);
         link.click();
@@ -1519,7 +1519,7 @@ class FileManager {
         const { fileId, printerName, filename } = this.pendingSend;
 
         try {
-            const response = await fetch(`/api/files/${fileId}/send`, {
+            const response = await fetch(`api/files/${fileId}/send`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1594,4 +1594,23 @@ window.addEventListener('beforeunload', () => {
     if (window.printFarmDashboard) {
         window.printFarmDashboard.stopAutoUpdate();
     }
-}); 
+});
+
+// -----------------------------------------------------------------------------
+// Ensure trailing slash for Home Assistant ingress URLs
+// When accessed via /api/hassio_ingress/<slug> without trailing "/", relative
+// requests like "api/files" will drop the slug and fail. We detect this early
+// and reload the page with the trailing slash so subsequent relative paths work.
+// -----------------------------------------------------------------------------
+(function ensureIngressTrailingSlash() {
+    try {
+        const { pathname, search, hash } = window.location;
+        const ingressMatch = pathname.match(/\/api\/hassio_ingress\/[^/]+$/);
+        if (ingressMatch && !pathname.endsWith('/')) {
+            const newUrl = pathname + '/' + (search || '') + (hash || '');
+            window.location.replace(newUrl); // replace so history isn't polluted
+        }
+    } catch (e) {
+        console.warn('Ingress trailing slash check failed:', e);
+    }
+})(); 
