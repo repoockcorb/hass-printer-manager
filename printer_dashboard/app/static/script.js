@@ -255,6 +255,53 @@ class PrintFarmDashboard {
                 document.body.style.overflow = '';
             }
         });
+
+        // Menu Toggle
+        document.querySelector('.menu-toggle').addEventListener('click', () => {
+            document.querySelector('.side-menu').classList.add('show');
+            document.querySelector('.menu-overlay').style.display = 'block';
+        });
+
+        document.querySelector('.menu-overlay').addEventListener('click', () => {
+            document.querySelector('.side-menu').classList.remove('show');
+            document.querySelector('.menu-overlay').style.display = 'none';
+        });
+
+        // Sync desktop and mobile filters
+        document.getElementById('status-filter').addEventListener('change', (e) => {
+            document.getElementById('mobile-status-filter').value = e.target.value;
+            this.applyFilters();
+        });
+
+        document.getElementById('mobile-status-filter').addEventListener('change', (e) => {
+            document.getElementById('status-filter').value = e.target.value;
+            this.applyFilters();
+            this.closeMobileMenu();
+        });
+
+        document.getElementById('type-filter').addEventListener('change', (e) => {
+            document.getElementById('mobile-type-filter').value = e.target.value;
+            this.applyFilters();
+        });
+
+        document.getElementById('mobile-type-filter').addEventListener('change', (e) => {
+            document.getElementById('type-filter').value = e.target.value;
+            this.applyFilters();
+            this.closeMobileMenu();
+        });
+
+        // Sync desktop and mobile buttons
+        document.getElementById('files-btn').addEventListener('click', this.showUploadModal.bind(this));
+        document.getElementById('mobile-files-btn').addEventListener('click', () => {
+            this.showUploadModal();
+            this.closeMobileMenu();
+        });
+
+        document.getElementById('refresh-btn').addEventListener('click', this.refreshAll.bind(this));
+        document.getElementById('mobile-refresh-btn').addEventListener('click', () => {
+            this.refreshAll();
+            this.closeMobileMenu();
+        });
     }
     
     async loadPrinters() {
@@ -1605,6 +1652,31 @@ class PrintFarmDashboard {
 
     hideThumbModal(){
         document.getElementById('thumb-modal').style.display='none';
+    }
+
+    closeMobileMenu() {
+        document.querySelector('.side-menu').classList.remove('show');
+        document.querySelector('.menu-overlay').style.display = 'none';
+    }
+
+    updateStatusCounts() {
+        const printers = document.querySelectorAll('.printer-card');
+        let total = printers.length;
+        let printing = 0;
+        let idle = 0;
+        let error = 0;
+
+        printers.forEach(printer => {
+            const status = printer.getAttribute('data-status').toLowerCase();
+            if (status === 'printing') printing++;
+            else if (status === 'idle') idle++;
+            else if (status === 'error') error++;
+        });
+
+        document.getElementById('total-count').textContent = total;
+        document.getElementById('printing-count').textContent = printing;
+        document.getElementById('idle-count').textContent = idle;
+        document.getElementById('error-count').textContent = error;
     }
 }
 
