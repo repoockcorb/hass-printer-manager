@@ -1468,19 +1468,32 @@ class PrintFarmDashboard {
         img.style.display='none'; err.style.display='none'; load.style.display='flex';
         modal.style.display='flex';
 
-        fetch(`api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(fileName)}`)
-          .then(r=>r.ok?r.blob():Promise.reject())
-          .then(blob=>{
-              const url=URL.createObjectURL(blob);
-              img.src=url;
-              img.onload=()=>URL.revokeObjectURL(url);
-              load.style.display='none';
-              img.style.display='block';
-          })
-          .catch(()=>{
-              load.style.display='none';
-              err.style.display='flex';
-          });
+        const tryUrls=[
+            `api/gcode/thumbnail/${encodeURIComponent(fileName)}`,
+            `api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(fileName)}`
+        ];
+
+        const fetchThumbnail=(urls)=>{
+            if(!urls.length){throw new Error('no thumb');}
+            const url=urls.shift();
+            return fetch(url).then(r=>{
+               if(r.ok) return r.blob();
+               return fetchThumbnail(urls);
+            });
+        };
+
+        fetchThumbnail(tryUrls)
+            .then(blob=>{
+                const url=URL.createObjectURL(blob);
+                img.src=url;
+                img.onload=()=>URL.revokeObjectURL(url);
+                load.style.display='none';
+                img.style.display='block';
+            })
+            .catch(()=>{
+                load.style.display='none';
+                err.style.display='flex';
+            });
     }
 
     hideThumbModal(){
