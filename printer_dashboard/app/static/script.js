@@ -197,17 +197,31 @@ class PrintFarmDashboard {
         const menuToggle = document.getElementById('menu-toggle');
         const filterSection = document.querySelector('.filter-section');
         const actionButtons = document.querySelector('.action-buttons');
+        const menuOverlay = document.querySelector('.menu-overlay');
 
-        menuToggle.addEventListener('click', () => {
+        menuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
             filterSection.classList.toggle('show');
             actionButtons.classList.toggle('show');
+            menuOverlay.classList.toggle('show');
+            document.body.style.overflow = filterSection.classList.contains('show') ? 'hidden' : '';
+        });
+
+        // Close menu when clicking overlay
+        menuOverlay.addEventListener('click', () => {
+            filterSection.classList.remove('show');
+            actionButtons.classList.remove('show');
+            menuOverlay.classList.remove('show');
+            document.body.style.overflow = '';
         });
 
         // Close menu when clicking outside
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('.header-controls')) {
+            if (!e.target.closest('.header-controls') || e.target.closest('.menu-overlay')) {
                 filterSection.classList.remove('show');
                 actionButtons.classList.remove('show');
+                menuOverlay.classList.remove('show');
+                document.body.style.overflow = '';
             }
         });
     }
