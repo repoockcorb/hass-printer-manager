@@ -922,13 +922,29 @@ class PrintFarmDashboard {
     }
     
     hideCameraModal() {
+        // Stop the refresh interval first
+        this.stopCameraRefresh();
+        
+        // Clear the current printer reference
+        this.currentCameraPrinter = null;
+        
+        // Get all the modal elements
         const modal = document.getElementById('camera-modal');
         const stream = document.getElementById('camera-stream');
+        const loading = document.getElementById('camera-loading');
+        const error = document.getElementById('camera-error');
         
+        // Hide all elements
         modal.style.display = 'none';
-        stream.src = '';
-        this.currentCameraPrinter = null;
-        this.stopCameraRefresh();
+        if (loading) loading.style.display = 'none';
+        if (error) error.style.display = 'none';
+        
+        // Clear the image source and remove event listeners
+        if (stream) {
+            stream.onload = null;
+            stream.onerror = null;
+            stream.src = '';
+        }
     }
     
     async refreshCameraFeed() {
