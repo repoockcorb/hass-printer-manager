@@ -32,40 +32,18 @@ class PrintFarmDashboard {
     }
     
     setupEventListeners() {
-        // Helper function to safely add event listener
-        const safeAddEventListener = (selector, event, handler) => {
-            const element = typeof selector === 'string' ? document.getElementById(selector) : selector;
-            if (element) {
-                element.addEventListener(event, handler);
-                return true;
-            } else {
-                console.warn(`Element not found: ${selector}`);
-                return false;
-            }
-        };
-        
-        const safeQuerySelector = (selector, handler) => {
-            const element = document.querySelector(selector);
-            if (element && handler) {
-                return handler(element);
-            } else if (!element) {
-                console.warn(`Element not found: ${selector}`);
-            }
-            return element;
-        };
-        
         // Refresh button
-        safeAddEventListener('refresh-btn', 'click', () => {
+        document.getElementById('refresh-btn').addEventListener('click', () => {
             this.refreshAll();
         });
         
         // Filter controls
-        safeAddEventListener('status-filter', 'change', (e) => {
+        document.getElementById('status-filter').addEventListener('change', (e) => {
             this.filters.status = e.target.value;
             this.applyFilters();
         });
         
-        safeAddEventListener('type-filter', 'change', (e) => {
+        document.getElementById('type-filter').addEventListener('change', (e) => {
             this.filters.type = e.target.value;
             this.applyFilters();
         });
@@ -75,17 +53,15 @@ class PrintFarmDashboard {
         const closeBtn = document.querySelector('.modal-close');
         const cancelBtn = document.getElementById('modal-cancel');
         
-        if (closeBtn) closeBtn.addEventListener('click', () => this.hideModal());
-        if (cancelBtn) cancelBtn.addEventListener('click', () => this.hideModal());
+        closeBtn.addEventListener('click', () => this.hideModal());
+        cancelBtn.addEventListener('click', () => this.hideModal());
         
         // Click outside modal to close
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    this.hideModal();
-                }
-            });
-        }
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.hideModal();
+            }
+        });
         
         // Camera modal controls
         const cameraModal = document.getElementById('camera-modal');
@@ -98,13 +74,11 @@ class PrintFarmDashboard {
         if (cameraRefreshBtn) cameraRefreshBtn.addEventListener('click', () => this.refreshCameraFeed());
         
         // Click outside camera modal to close
-        if (cameraModal) {
-            cameraModal.addEventListener('click', (e) => {
-                if (e.target === cameraModal) {
-                    this.hideCameraModal();
-                }
-            });
-        }
+        cameraModal.addEventListener('click', (e) => {
+            if (e.target === cameraModal) {
+                this.hideCameraModal();
+            }
+        });
         
         // Movement modal controls
         const movementModal = document.getElementById('movement-modal');
@@ -115,13 +89,11 @@ class PrintFarmDashboard {
         if (movementCloseFooterBtn) movementCloseFooterBtn.addEventListener('click', () => this.hideMovementModal());
         
         // Click outside movement modal to close
-        if (movementModal) {
-            movementModal.addEventListener('click', (e) => {
-                if (e.target === movementModal) {
-                    this.hideMovementModal();
-                }
-            });
-        }
+        movementModal.addEventListener('click', (e) => {
+            if (e.target === movementModal) {
+                this.hideMovementModal();
+            }
+        });
         
         // Distance selector buttons
         document.addEventListener('click', (e) => {
@@ -1275,7 +1247,7 @@ class FileManager {
 
     async loadFiles() {
         try {
-            const response = await fetch('api/files');
+            const response = await fetch('/api/files');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -1290,7 +1262,7 @@ class FileManager {
 
     async loadPrinters() {
         try {
-            const response = await fetch('api/printers');
+            const response = await fetch('/api/printers');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -1443,36 +1415,17 @@ class FileManager {
         try {
             this.showUploadProgress(0);
             
-            console.log(`Starting upload of ${file.name} (${file.size} bytes)`);
-            
-            const response = await fetch('api/files/upload', {
+            const response = await fetch('/api/files/upload', {
                 method: 'POST',
                 body: formData
             });
 
-            console.log(`Upload response status: ${response.status}`);
-            
-            let result;
-            const contentType = response.headers.get('content-type');
-            
-            if (contentType && contentType.includes('application/json')) {
-                result = await response.json();
-            } else {
-                // Handle non-JSON responses (e.g., HTML error pages)
-                const text = await response.text();
-                console.error('Non-JSON response:', text);
-                throw new Error(`Server returned non-JSON response (${response.status}): ${text.substring(0, 100)}...`);
-            }
-
             if (!response.ok) {
-                throw new Error(result.error || `Server error: ${response.status}`);
+                const error = await response.json();
+                throw new Error(error.error || 'Upload failed');
             }
 
-            if (!result.success) {
-                throw new Error(result.error || 'Upload failed');
-            }
-
-            console.log('Upload successful:', result);
+            const result = await response.json();
             this.showNotification(`${file.name} uploaded successfully`, 'success');
             
             // Reload files list
@@ -1480,16 +1433,7 @@ class FileManager {
 
         } catch (error) {
             console.error('Upload error:', error);
-            
-            // Provide more specific error messages
-            let errorMessage = error.message;
-            if (errorMessage.includes('JSON')) {
-                errorMessage = 'Server configuration error. Please check the logs.';
-            } else if (errorMessage.includes('NetworkError') || errorMessage.includes('fetch')) {
-                errorMessage = 'Network error. Please check your connection.';
-            }
-            
-            this.showNotification(`Upload failed: ${errorMessage}`, 'error');
+            this.showNotification(`Upload failed: ${error.message}`, 'error');
         } finally {
             this.hideUploadProgress();
         }
@@ -1523,7 +1467,7 @@ class FileManager {
         }
 
         try {
-            const response = await fetch(`api/files/${fileId}`, {
+            const response = await fetch(`/api/files/${fileId}`, {
                 method: 'DELETE'
             });
 
@@ -1546,7 +1490,7 @@ class FileManager {
         if (!file) return;
 
         const link = document.createElement('a');
-        link.href = `api/files/${fileId}/download`;
+        link.href = `/api/files/${fileId}/download`;
         link.download = file.filename;
         document.body.appendChild(link);
         link.click();
@@ -1575,7 +1519,7 @@ class FileManager {
         const { fileId, printerName, filename } = this.pendingSend;
 
         try {
-            const response = await fetch(`api/files/${fileId}/send`, {
+            const response = await fetch(`/api/files/${fileId}/send`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1650,27 +1594,4 @@ window.addEventListener('beforeunload', () => {
     if (window.printFarmDashboard) {
         window.printFarmDashboard.stopAutoUpdate();
     }
-});
-
-// -----------------------------------------------------------------------------
-// Ensure trailing slash for Home Assistant ingress URLs
-// When the dashboard is accessed through /api/hassio_ingress/<slug> without the
-// trailing "/", making a relative request like "api/files" will drop the slug
-// and hit the wrong endpoint.  We detect that situation early and reload the
-// page with the trailing slash so that all subsequent relative paths resolve
-// correctly, both locally and via Nabu Casa remote access.
-// -----------------------------------------------------------------------------
-(function ensureIngressTrailingSlash() {
-    try {
-        const { pathname, search, hash } = window.location;
-        const ingressMatch = pathname.match(/\/api\/hassio_ingress\/[^/]+$/);
-        if (ingressMatch && !pathname.endsWith('/')) {
-            const newUrl = pathname + '/' + (search || '') + (hash || '');
-            // Use replace so we don't pollute the browser history
-            window.location.replace(newUrl);
-        }
-    } catch (e) {
-        // Fail silently; better to continue loading than crash the script
-        console.warn('Ingress trailing slash check failed:', e);
-    }
-})(); 
+}); 

@@ -23,61 +23,6 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
-# Configure CORS and security headers for HTTPS support
-@app.after_request
-def after_request(response):
-    # Add CORS headers for API endpoints
-    if request.endpoint and request.endpoint.startswith('api'):
-        response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    
-    # Security headers for HTTPS
-    response.headers['X-Content-Type-Options'] = 'nosniff'
-    response.headers['X-Frame-Options'] = 'DENY'
-    response.headers['X-XSS-Protection'] = '1; mode=block'
-    
-    # Allow mixed content for development and HA ingress
-    # More permissive CSP for Home Assistant ingress compatibility
-    if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
-        response.headers['Content-Security-Policy'] = "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http: data: blob:; img-src 'self' data: https: http: blob:; frame-src 'self' https: http:; connect-src 'self' https: http: ws: wss:;"
-    
-    return response
-
-# Handle preflight OPTIONS requests
-@app.route('/api/<path:path>', methods=['OPTIONS'])
-def handle_options(path):
-    response = jsonify({'status': 'ok'})
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    return response
-
-# Global error handlers to ensure API endpoints return JSON
-@app.errorhandler(404)
-def not_found(error):
-    if request.path.startswith('/api/'):
-        response = jsonify({'error': 'Not Found', 'message': 'The requested resource was not found'})
-        response.headers['Content-Type'] = 'application/json'
-        return response, 404
-    return error
-
-@app.errorhandler(500)
-def internal_error(error):
-    if request.path.startswith('/api/'):
-        response = jsonify({'error': 'Internal Server Error', 'message': 'An internal server error occurred'})
-        response.headers['Content-Type'] = 'application/json'
-        return response, 500
-    return error
-
-@app.errorhandler(405)
-def method_not_allowed(error):
-    if request.path.startswith('/api/'):
-        response = jsonify({'error': 'Method Not Allowed', 'message': 'The requested method is not allowed for this endpoint'})
-        response.headers['Content-Type'] = 'application/json'
-        return response, 405
-    return error
-
 class PrinterAPI:
     """Base class for printer API interactions"""
     
@@ -693,31 +638,12 @@ class FileManager:
     """Manages uploaded G-code files"""
     
     def __init__(self):
-        # For Home Assistant add-on, use /data directory which is persistent
-        if os.path.exists('/data'):
-            # Home Assistant add-on environment
-            self.upload_dir = '/data/gcode_files'
-        else:
-            # Development/standalone environment
-            self.upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
-        
+        self.upload_dir = '/data/gcode_files'
         self.files = {}  # id -> GCodeFile
         self.max_files = 50  # Maximum number of files to keep
         
-        # Create upload directory with proper error handling
-        try:
-            os.makedirs(self.upload_dir, exist_ok=True)
-            # Set proper permissions for Home Assistant
-            if os.path.exists('/data'):
-                os.chmod(self.upload_dir, 0o755)
-            logger.info(f"File upload directory created/verified: {self.upload_dir}")
-        except Exception as e:
-            logger.error(f"Failed to create upload directory {self.upload_dir}: {e}")
-            # Fallback to temp directory
-            import tempfile
-            self.upload_dir = os.path.join(tempfile.gettempdir(), 'printer_dashboard_files')
-            os.makedirs(self.upload_dir, exist_ok=True)
-            logger.info(f"Using fallback upload directory: {self.upload_dir}")
+        # Create upload directory
+        os.makedirs(self.upload_dir, exist_ok=True)
         
         # Load existing files
         self._load_existing_files()
@@ -739,22 +665,9 @@ class FileManager:
     
     def upload_file(self, file_obj, filename):
         """Upload and process a new G-code file"""
-        filepath = None
         try:
-            # Validate upload directory
-            if not os.path.exists(self.upload_dir):
-                logger.error(f"Upload directory does not exist: {self.upload_dir}")
-                raise Exception(f"Upload directory not available: {self.upload_dir}")
-            
-            if not os.access(self.upload_dir, os.W_OK):
-                logger.error(f"Upload directory is not writable: {self.upload_dir}")
-                raise Exception(f"Upload directory not writable: {self.upload_dir}")
-            
             # Secure the filename
             filename = secure_filename(filename)
-            if not filename:
-                raise Exception("Invalid filename after security filtering")
-                
             if not filename.endswith('.gcode'):
                 filename += '.gcode'
             
@@ -763,19 +676,9 @@ class FileManager:
             unique_filename = f"{base_name}_{int(time.time())}{ext}"
             filepath = os.path.join(self.upload_dir, unique_filename)
             
-            logger.info(f"Saving file to: {filepath}")
-            
             # Save file
             file_obj.save(filepath)
-            
-            if not os.path.exists(filepath):
-                raise Exception(f"File was not saved successfully: {filepath}")
-                
             file_size = os.path.getsize(filepath)
-            if file_size == 0:
-                raise Exception("Uploaded file is empty")
-            
-            logger.info(f"File saved successfully, size: {file_size} bytes")
             
             # Create GCodeFile object
             gcode_file = GCodeFile(filename, filepath, file_size)
@@ -793,18 +696,11 @@ class FileManager:
             # Clean up old files if needed
             self._cleanup_old_files()
             
-            logger.info(f"Uploaded G-code file: {filename} ({file_size} bytes) with ID: {gcode_file.id}")
+            logger.info(f"Uploaded G-code file: {filename} ({file_size} bytes)")
             return gcode_file
             
         except Exception as e:
-            logger.error(f"Error uploading file {filename}: {e}", exc_info=True)
-            # Clean up partial file if it exists
-            if filepath and os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                    logger.info(f"Cleaned up partial file: {filepath}")
-                except Exception as cleanup_error:
-                    logger.error(f"Failed to clean up partial file {filepath}: {cleanup_error}")
+            logger.error(f"Error uploading file {filename}: {e}")
             raise
     
     def _find_duplicate(self, file_hash):
@@ -1119,12 +1015,6 @@ def index():
     logger.info("Serving main dashboard page")
     return render_template('index.html')
 
-@app.route('/debug')
-def debug():
-    """Debug page for testing file uploads"""
-    logger.info("Serving debug page")
-    return render_template('debug.html')
-
 @app.route('/api/printers')
 def get_printers():
     """API endpoint to get all printer configurations"""
@@ -1210,12 +1100,6 @@ def health_check():
         'status': 'healthy', 
         'printers_count': len(printer_manager.printers),
         'last_update': max(printer_manager.last_update.values()).isoformat() if printer_manager.last_update else None,
-        'file_manager': {
-            'upload_dir': file_manager.upload_dir,
-            'upload_dir_exists': os.path.exists(file_manager.upload_dir),
-            'upload_dir_writable': os.access(file_manager.upload_dir, os.W_OK) if os.path.exists(file_manager.upload_dir) else False,
-            'files_count': len(file_manager.get_all_files())
-        },
         'request_info': {
             'url': request.url,
             'host': request.host,
@@ -1243,110 +1127,6 @@ def debug_static():
         'working_directory': os.getcwd(),
         'static_path_exists': os.path.exists(static_path)
     })
-
-@app.route('/debug/upload-test')
-def debug_upload_test():
-    """Simple test page for file upload debugging"""
-    return '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Upload Test</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
-        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; font-family: monospace; }
-        .error { background: #f8d7da; color: #721c24; }
-        .success { background: #d4edda; color: #155724; }
-    </style>
-</head>
-<body>
-    <h1>File Upload Debug Test</h1>
-    
-    <div class="test-section">
-        <h3>1. Test API Connectivity</h3>
-        <button onclick="testAPI()">Test API Health</button>
-        <div id="apiResult" class="result"></div>
-    </div>
-    
-    <div class="test-section">
-        <h3>2. Test File List API</h3>
-        <button onclick="testFileList()">Test File List</button>
-        <div id="fileListResult" class="result"></div>
-    </div>
-    
-    <div class="test-section">
-        <h3>3. Test File Upload</h3>
-        <input type="file" id="testFile" accept=".gcode">
-        <button onclick="testUpload()">Test Upload</button>
-        <div id="uploadResult" class="result"></div>
-    </div>
-    
-    <script>
-        async function testAPI() {
-            try {
-                const response = await fetch('/api/health');
-                const data = await response.json();
-                document.getElementById('apiResult').textContent = JSON.stringify(data, null, 2);
-                document.getElementById('apiResult').className = 'result success';
-            } catch (error) {
-                document.getElementById('apiResult').textContent = 'Error: ' + error.message;
-                document.getElementById('apiResult').className = 'result error';
-            }
-        }
-        
-        async function testFileList() {
-            try {
-                const response = await fetch('/api/files');
-                const data = await response.json();
-                document.getElementById('fileListResult').textContent = JSON.stringify(data, null, 2);
-                document.getElementById('fileListResult').className = 'result success';
-            } catch (error) {
-                document.getElementById('fileListResult').textContent = 'Error: ' + error.message;
-                document.getElementById('fileListResult').className = 'result error';
-            }
-        }
-        
-        async function testUpload() {
-            const fileInput = document.getElementById('testFile');
-            if (!fileInput.files[0]) {
-                document.getElementById('uploadResult').textContent = 'Please select a file first';
-                document.getElementById('uploadResult').className = 'result error';
-                return;
-            }
-            
-            try {
-                const formData = new FormData();
-                formData.append('file', fileInput.files[0]);
-                
-                const response = await fetch('/api/files/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                console.log('Response status:', response.status);
-                console.log('Response headers:', response.headers);
-                
-                const text = await response.text();
-                console.log('Response text:', text);
-                
-                try {
-                    const data = JSON.parse(text);
-                    document.getElementById('uploadResult').textContent = JSON.stringify(data, null, 2);
-                    document.getElementById('uploadResult').className = 'result ' + (response.ok ? 'success' : 'error');
-                } catch (parseError) {
-                    document.getElementById('uploadResult').textContent = 'JSON Parse Error: ' + parseError.message + '\\nResponse: ' + text;
-                    document.getElementById('uploadResult').className = 'result error';
-                }
-            } catch (error) {
-                document.getElementById('uploadResult').textContent = 'Network Error: ' + error.message;
-                document.getElementById('uploadResult').className = 'result error';
-            }
-        }
-    </script>
-</body>
-</html>
-    '''
 
 @app.route('/api/ha-info')
 def get_ha_info():
@@ -1921,74 +1701,38 @@ def test_moonraker_connection(host, port, timeout=1):
 def get_files():
     """Get all uploaded G-code files"""
     try:
-        logger.info("API: get_files called")
         files = file_manager.get_all_files()
-        response = jsonify([f.to_dict() for f in files])
-        response.headers['Content-Type'] = 'application/json'
-        return response
+        return jsonify([f.to_dict() for f in files])
     except Exception as e:
-        logger.error(f"Error getting files: {e}", exc_info=True)
-        error_response = jsonify({'error': str(e)})
-        error_response.headers['Content-Type'] = 'application/json'
-        return error_response, 500
+        logger.error(f"Error getting files: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/files/upload', methods=['POST'])
 def upload_file():
     """Upload a new G-code file"""
     try:
-        logger.info("File upload request received")
-        logger.info(f"Request method: {request.method}")
-        logger.info(f"Request content type: {request.content_type}")
-        logger.info(f"Request headers: {dict(request.headers)}")
-        logger.info(f"Request files: {list(request.files.keys())}")
-        
-        # Check if this is a preflight request
-        if request.method == 'OPTIONS':
-            response = jsonify({'status': 'ok'})
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-            return response
-        
         if 'file' not in request.files:
-            logger.warning("No file provided in upload request")
-            error_response = jsonify({'success': False, 'error': 'No file provided'})
-            error_response.headers['Content-Type'] = 'application/json'
-            return error_response, 400
+            return jsonify({'error': 'No file provided'}), 400
         
         file_obj = request.files['file']
         if file_obj.filename == '':
-            logger.warning("Empty filename in upload request")
-            error_response = jsonify({'success': False, 'error': 'No file selected'})
-            error_response.headers['Content-Type'] = 'application/json'
-            return error_response, 400
+            return jsonify({'error': 'No file selected'}), 400
         
         if not file_obj.filename.lower().endswith('.gcode'):
-            logger.warning(f"Invalid file type: {file_obj.filename}")
-            error_response = jsonify({'success': False, 'error': 'Only .gcode files are allowed'})
-            error_response.headers['Content-Type'] = 'application/json'
-            return error_response, 400
-        
-        logger.info(f"Starting upload of file: {file_obj.filename}")
+            return jsonify({'error': 'Only .gcode files are allowed'}), 400
         
         # Upload and process file
         gcode_file = file_manager.upload_file(file_obj, file_obj.filename)
         
-        logger.info(f"File uploaded successfully: {file_obj.filename}")
-        
-        success_response = jsonify({
+        return jsonify({
             'success': True,
             'file': gcode_file.to_dict(),
             'message': 'File uploaded successfully'
         })
-        success_response.headers['Content-Type'] = 'application/json'
-        return success_response
         
     except Exception as e:
-        logger.error(f"Error uploading file: {e}", exc_info=True)
-        error_response = jsonify({'success': False, 'error': f'Upload failed: {str(e)}'})
-        error_response.headers['Content-Type'] = 'application/json'
-        return error_response, 500
+        logger.error(f"Error uploading file: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/files/<file_id>', methods=['DELETE'])
 def delete_file(file_id):
@@ -2043,120 +1787,6 @@ def download_file(file_id):
         logger.error(f"Error downloading file: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/test-basic')
-def test_basic():
-    """Basic test page to check if Flask and templates are working"""
-    return '''
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Basic Test</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
-        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; }
-        .success { background: #d4edda; color: #155724; }
-        .error { background: #f8d7da; color: #721c24; }
-    </style>
-</head>
-<body>
-    <h1>Basic Flask Test</h1>
-    
-    <div class="test-section">
-        <h3>1. Page Loading Test</h3>
-        <div class="result success">✓ HTML template is loading correctly</div>
-    </div>
-    
-    <div class="test-section">
-        <h3>2. JavaScript Test</h3>
-        <button onclick="testJS()">Test JavaScript</button>
-        <div id="jsResult" class="result">Click button to test</div>
-    </div>
-    
-    <div class="test-section">
-        <h3>3. API Health Test</h3>
-        <button onclick="testAPI()">Test API</button>
-        <div id="apiResult" class="result">Click button to test</div>
-    </div>
-    
-    <div class="test-section">
-        <h3>4. Static Files Test</h3>
-        <button onclick="testStatic()">Test Static Files</button>
-        <div id="staticResult" class="result">Click button to test</div>
-    </div>
-    
-    <div class="test-section">
-        <h3>5. Navigation Test</h3>
-        <a href="/" style="padding: 10px; background: #007bff; color: white; text-decoration: none; border-radius: 3px;">Go to Main Dashboard</a>
-    </div>
-    
-    <script>
-        function testJS() {
-            document.getElementById('jsResult').textContent = '✓ JavaScript is working correctly';
-            document.getElementById('jsResult').className = 'result success';
-        }
-        
-        async function testAPI() {
-            try {
-                const response = await fetch('/api/health');
-                const data = await response.json();
-                document.getElementById('apiResult').textContent = '✓ API is working: ' + JSON.stringify(data.status);
-                document.getElementById('apiResult').className = 'result success';
-            } catch (error) {
-                document.getElementById('apiResult').textContent = '✗ API Error: ' + error.message;
-                document.getElementById('apiResult').className = 'result error';
-            }
-        }
-        
-        async function testStatic() {
-            try {
-                const response = await fetch('/static/styles.css');
-                if (response.ok) {
-                    document.getElementById('staticResult').textContent = '✓ Static files are accessible';
-                    document.getElementById('staticResult').className = 'result success';
-                } else {
-                    throw new Error('Static file returned ' + response.status);
-                }
-            } catch (error) {
-                document.getElementById('staticResult').textContent = '✗ Static files error: ' + error.message;
-                document.getElementById('staticResult').className = 'result error';
-            }
-        }
-        
-        // Auto-run tests on load
-        window.addEventListener('load', () => {
-            testJS();
-            setTimeout(() => {
-                testAPI();
-                testStatic();
-            }, 500);
-        });
-    </script>
-</body>
-</html>
-    '''
-
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
-    
-    try:
-        # Configure for Home Assistant add-on environment
-        host = os.environ.get('HOST', '0.0.0.0')
-        port = int(os.environ.get('PORT', 5001))
-        debug = os.environ.get('DEBUG', 'False').lower() == 'true'
-        
-        # Test file manager initialization
-        logger.info(f"File manager upload directory: {file_manager.upload_dir}")
-        logger.info(f"Upload directory exists: {os.path.exists(file_manager.upload_dir)}")
-        logger.info(f"Upload directory writable: {os.access(file_manager.upload_dir, os.W_OK)}")
-        
-        # List existing files
-        existing_files = file_manager.get_all_files()
-        logger.info(f"Found {len(existing_files)} existing files")
-        
-        logger.info(f"Starting Flask server on {host}:{port} (debug={debug})")
-        app.run(host=host, port=port, debug=debug)
-        
-    except Exception as e:
-        logger.error(f"Failed to start Flask app: {e}", exc_info=True)
-        raise 
+    app.run(host='127.0.0.1', port=5001, debug=False) 
