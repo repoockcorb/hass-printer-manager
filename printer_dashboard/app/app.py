@@ -638,23 +638,14 @@ class FileManager:
     """Manages uploaded G-code files"""
     
     def __init__(self):
-        # For Home Assistant add-on, use /data directory which is persistent
-        if os.path.exists('/data'):
-            # Home Assistant add-on environment
-            self.upload_dir = '/data/gcode_files'
-        else:
-            # Development/standalone environment
-            self.upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
-        
+        # Use a more accessible directory path
+        self.upload_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
         self.files = {}  # id -> GCodeFile
         self.max_files = 50  # Maximum number of files to keep
         
         # Create upload directory with proper error handling
         try:
             os.makedirs(self.upload_dir, exist_ok=True)
-            # Set proper permissions for Home Assistant
-            if os.path.exists('/data'):
-                os.chmod(self.upload_dir, 0o755)
             logger.info(f"File upload directory created/verified: {self.upload_dir}")
         except Exception as e:
             logger.error(f"Failed to create upload directory {self.upload_dir}: {e}")
@@ -1064,12 +1055,6 @@ def index():
     logger.info("Serving main dashboard page")
     return render_template('index.html')
 
-@app.route('/debug')
-def debug():
-    """Debug page for testing file uploads"""
-    logger.info("Serving debug page")
-    return render_template('debug.html')
-
 @app.route('/api/printers')
 def get_printers():
     """API endpoint to get all printer configurations"""
@@ -1155,12 +1140,6 @@ def health_check():
         'status': 'healthy', 
         'printers_count': len(printer_manager.printers),
         'last_update': max(printer_manager.last_update.values()).isoformat() if printer_manager.last_update else None,
-        'file_manager': {
-            'upload_dir': file_manager.upload_dir,
-            'upload_dir_exists': os.path.exists(file_manager.upload_dir),
-            'upload_dir_writable': os.access(file_manager.upload_dir, os.W_OK) if os.path.exists(file_manager.upload_dir) else False,
-            'files_count': len(file_manager.get_all_files())
-        },
         'request_info': {
             'url': request.url,
             'host': request.host,
@@ -1859,25 +1838,4 @@ def download_file(file_id):
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
-    
-    try:
-        # Configure for Home Assistant add-on environment
-        host = os.environ.get('HOST', '0.0.0.0')
-        port = int(os.environ.get('PORT', 5001))
-        debug = os.environ.get('DEBUG', 'False').lower() == 'true'
-        
-        # Test file manager initialization
-        logger.info(f"File manager upload directory: {file_manager.upload_dir}")
-        logger.info(f"Upload directory exists: {os.path.exists(file_manager.upload_dir)}")
-        logger.info(f"Upload directory writable: {os.access(file_manager.upload_dir, os.W_OK)}")
-        
-        # List existing files
-        existing_files = file_manager.get_all_files()
-        logger.info(f"Found {len(existing_files)} existing files")
-        
-        logger.info(f"Starting Flask server on {host}:{port} (debug={debug})")
-        app.run(host=host, port=port, debug=debug)
-        
-    except Exception as e:
-        logger.error(f"Failed to start Flask app: {e}", exc_info=True)
-        raise 
+    app.run(host='127.0.0.1', port=5001, debug=False) 
