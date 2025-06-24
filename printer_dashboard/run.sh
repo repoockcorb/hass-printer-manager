@@ -38,7 +38,7 @@ nginx &
 sleep 2
 
 # Set environment variables for Flask
-export FLASK_APP=app/app.py
+export FLASK_APP=app.py
 export FLASK_ENV=production
 export HOST=0.0.0.0
 export PORT=5001
