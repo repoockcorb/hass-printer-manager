@@ -173,6 +173,15 @@ class PrintFarmDashboard {
         if (this.uploadConfirmBtn) {
             this.uploadConfirmBtn.addEventListener('click', () => this.uploadAndSendGcode());
         }
+
+        // Send file buttons (delegated)
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-send-file');
+            if (btn) {
+                const file = btn.getAttribute('data-file');
+                this.sendExistingFile(file);
+            }
+        });
     }
     
     async loadPrinters() {
@@ -1204,6 +1213,7 @@ class PrintFarmDashboard {
     showUploadModal() {
         if (!this.uploadModal) return;
         this.populatePrinterSelect();
+        this.loadFileList();
         this.uploadModal.style.display = 'flex';
     }
 
@@ -1264,10 +1274,91 @@ class PrintFarmDashboard {
 
             this.showNotification(`File sent to ${printer} successfully`, 'success');
             this.hideUploadModal();
+            this.loadFileList();
         } catch (err) {
             console.error('Upload error', err);
             errorEl.textContent = err.message;
             errorEl.style.display = 'block';
+            progressEl.style.display = 'none';
+        }
+    }
+
+    /* =================== File list =================== */
+    async loadFileList() {
+        const container = document.getElementById('file-list-container');
+        if (!container) return;
+        container.innerHTML = '<p style="color:#94a3b8;">Loading...</p>';
+        try {
+            const resp = await fetch('api/gcode/files');
+            const files = await resp.json();
+            container.innerHTML = '';
+            if (!files.length) {
+                container.innerHTML = '<p style="color:#94a3b8;">No files uploaded.</p>';
+                return;
+            }
+            files.forEach(f => {
+                const row = document.createElement('div');
+                row.className = 'file-row';
+                row.style.display = 'flex';
+                row.style.alignItems = 'center';
+                row.style.justifyContent = 'space-between';
+                row.style.padding = '0.25rem 0';
+
+                const nameEl = document.createElement('span');
+                nameEl.textContent = f.name;
+                nameEl.style.flex = '1';
+                nameEl.style.color = '#e0e6ed';
+
+                const sizeEl = document.createElement('span');
+                sizeEl.textContent = this.formatBytes(f.size);
+                sizeEl.style.marginRight = '0.5rem';
+                sizeEl.style.color = '#94a3b8';
+
+                const sendBtn = document.createElement('button');
+                sendBtn.className = 'btn btn-primary btn-send-file';
+                sendBtn.textContent = 'Send';
+                sendBtn.setAttribute('data-file', f.name);
+
+                row.appendChild(nameEl);
+                row.appendChild(sizeEl);
+                row.appendChild(sendBtn);
+                container.appendChild(row);
+            });
+        } catch (err) {
+            container.innerHTML = `<p style="color:#f87171;">Error: ${err.message}</p>`;
+        }
+    }
+
+    formatBytes(bytes) {
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        if (bytes === 0) return '0 B';
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async sendExistingFile(fileName) {
+        const printer = this.printerSelect.value;
+        const errorEl = document.getElementById('upload-error');
+        const progressEl = document.getElementById('upload-progress');
+        errorEl.style.display = 'none';
+        progressEl.style.display = 'block';
+        progressEl.textContent = 'Sending...';
+        try {
+            const sendResp = await fetch('api/gcode/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ printer, file: fileName, start: true })
+            });
+            const sendJson = await sendResp.json();
+            if (!sendResp.ok || !sendJson.success) {
+                throw new Error(sendJson.error || 'Send failed');
+            }
+            this.showNotification(`File sent to ${printer} successfully`, 'success');
+            this.hideUploadModal();
+        } catch (err) {
+            errorEl.textContent = err.message;
+            errorEl.style.display = 'block';
+        } finally {
             progressEl.style.display = 'none';
         }
     }
