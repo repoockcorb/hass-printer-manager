@@ -279,15 +279,15 @@ class KlipperAPI(PrinterAPI):
     
     def pause_print(self):
         """Pause current print"""
-        return self._make_request('printer/print/pause', method='POST')
+        return self._make_request('printer/print/pause', method='POST', data={})
     
     def resume_print(self):
         """Resume current print"""
-        return self._make_request('printer/print/resume', method='POST')
+        return self._make_request('printer/print/resume', method='POST', data={})
     
     def cancel_print(self):
         """Cancel current print"""
-        return self._make_request('printer/print/cancel', method='POST')
+        return self._make_request('printer/print/cancel', method='POST', data={})
     
     def home_printer(self, axes=None):
         """Home printer axes. If axes is None, homes all axes"""
