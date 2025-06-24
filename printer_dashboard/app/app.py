@@ -23,6 +23,60 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
+# Configure CORS and security headers for HTTPS support
+@app.after_request
+def after_request(response):
+    # Add CORS headers for API endpoints
+    if request.endpoint and request.endpoint.startswith('api'):
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    
+    # Security headers for HTTPS
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    
+    # Allow mixed content for development (remove in production)
+    if request.is_secure:
+        response.headers['Content-Security-Policy'] = "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data:; img-src 'self' data: https:;"
+    
+    return response
+
+# Handle preflight OPTIONS requests
+@app.route('/api/<path:path>', methods=['OPTIONS'])
+def handle_options(path):
+    response = jsonify({'status': 'ok'})
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
+# Global error handlers to ensure API endpoints return JSON
+@app.errorhandler(404)
+def not_found(error):
+    if request.path.startswith('/api/'):
+        response = jsonify({'error': 'Not Found', 'message': 'The requested resource was not found'})
+        response.headers['Content-Type'] = 'application/json'
+        return response, 404
+    return error
+
+@app.errorhandler(500)
+def internal_error(error):
+    if request.path.startswith('/api/'):
+        response = jsonify({'error': 'Internal Server Error', 'message': 'An internal server error occurred'})
+        response.headers['Content-Type'] = 'application/json'
+        return response, 500
+    return error
+
+@app.errorhandler(405)
+def method_not_allowed(error):
+    if request.path.startswith('/api/'):
+        response = jsonify({'error': 'Method Not Allowed', 'message': 'The requested method is not allowed for this endpoint'})
+        response.headers['Content-Type'] = 'application/json'
+        return response, 405
+    return error
+
 class PrinterAPI:
     """Base class for printer API interactions"""
     
@@ -1189,6 +1243,110 @@ def debug_static():
         'static_path_exists': os.path.exists(static_path)
     })
 
+@app.route('/debug/upload-test')
+def debug_upload_test():
+    """Simple test page for file upload debugging"""
+    return '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; font-family: monospace; }
+        .error { background: #f8d7da; color: #721c24; }
+        .success { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <h1>File Upload Debug Test</h1>
+    
+    <div class="test-section">
+        <h3>1. Test API Connectivity</h3>
+        <button onclick="testAPI()">Test API Health</button>
+        <div id="apiResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>2. Test File List API</h3>
+        <button onclick="testFileList()">Test File List</button>
+        <div id="fileListResult" class="result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>3. Test File Upload</h3>
+        <input type="file" id="testFile" accept=".gcode">
+        <button onclick="testUpload()">Test Upload</button>
+        <div id="uploadResult" class="result"></div>
+    </div>
+    
+    <script>
+        async function testAPI() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                document.getElementById('apiResult').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('apiResult').className = 'result success';
+            } catch (error) {
+                document.getElementById('apiResult').textContent = 'Error: ' + error.message;
+                document.getElementById('apiResult').className = 'result error';
+            }
+        }
+        
+        async function testFileList() {
+            try {
+                const response = await fetch('/api/files');
+                const data = await response.json();
+                document.getElementById('fileListResult').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('fileListResult').className = 'result success';
+            } catch (error) {
+                document.getElementById('fileListResult').textContent = 'Error: ' + error.message;
+                document.getElementById('fileListResult').className = 'result error';
+            }
+        }
+        
+        async function testUpload() {
+            const fileInput = document.getElementById('testFile');
+            if (!fileInput.files[0]) {
+                document.getElementById('uploadResult').textContent = 'Please select a file first';
+                document.getElementById('uploadResult').className = 'result error';
+                return;
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                
+                const response = await fetch('/api/files/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', response.headers);
+                
+                const text = await response.text();
+                console.log('Response text:', text);
+                
+                try {
+                    const data = JSON.parse(text);
+                    document.getElementById('uploadResult').textContent = JSON.stringify(data, null, 2);
+                    document.getElementById('uploadResult').className = 'result ' + (response.ok ? 'success' : 'error');
+                } catch (parseError) {
+                    document.getElementById('uploadResult').textContent = 'JSON Parse Error: ' + parseError.message + '\\nResponse: ' + text;
+                    document.getElementById('uploadResult').className = 'result error';
+                }
+            } catch (error) {
+                document.getElementById('uploadResult').textContent = 'Network Error: ' + error.message;
+                document.getElementById('uploadResult').className = 'result error';
+            }
+        }
+    </script>
+</body>
+</html>
+    '''
+
 @app.route('/api/ha-info')
 def get_ha_info():
     """API endpoint to get Home Assistant connection information for dynamic URL detection"""
@@ -1762,30 +1920,53 @@ def test_moonraker_connection(host, port, timeout=1):
 def get_files():
     """Get all uploaded G-code files"""
     try:
+        logger.info("API: get_files called")
         files = file_manager.get_all_files()
-        return jsonify([f.to_dict() for f in files])
+        response = jsonify([f.to_dict() for f in files])
+        response.headers['Content-Type'] = 'application/json'
+        return response
     except Exception as e:
-        logger.error(f"Error getting files: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error getting files: {e}", exc_info=True)
+        error_response = jsonify({'error': str(e)})
+        error_response.headers['Content-Type'] = 'application/json'
+        return error_response, 500
 
 @app.route('/api/files/upload', methods=['POST'])
 def upload_file():
     """Upload a new G-code file"""
     try:
         logger.info("File upload request received")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request content type: {request.content_type}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Request files: {list(request.files.keys())}")
+        
+        # Check if this is a preflight request
+        if request.method == 'OPTIONS':
+            response = jsonify({'status': 'ok'})
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+            return response
         
         if 'file' not in request.files:
             logger.warning("No file provided in upload request")
-            return jsonify({'success': False, 'error': 'No file provided'}), 400
+            error_response = jsonify({'success': False, 'error': 'No file provided'})
+            error_response.headers['Content-Type'] = 'application/json'
+            return error_response, 400
         
         file_obj = request.files['file']
         if file_obj.filename == '':
             logger.warning("Empty filename in upload request")
-            return jsonify({'success': False, 'error': 'No file selected'}), 400
+            error_response = jsonify({'success': False, 'error': 'No file selected'})
+            error_response.headers['Content-Type'] = 'application/json'
+            return error_response, 400
         
         if not file_obj.filename.lower().endswith('.gcode'):
             logger.warning(f"Invalid file type: {file_obj.filename}")
-            return jsonify({'success': False, 'error': 'Only .gcode files are allowed'}), 400
+            error_response = jsonify({'success': False, 'error': 'Only .gcode files are allowed'})
+            error_response.headers['Content-Type'] = 'application/json'
+            return error_response, 400
         
         logger.info(f"Starting upload of file: {file_obj.filename}")
         
@@ -1794,15 +1975,19 @@ def upload_file():
         
         logger.info(f"File uploaded successfully: {file_obj.filename}")
         
-        return jsonify({
+        success_response = jsonify({
             'success': True,
             'file': gcode_file.to_dict(),
             'message': 'File uploaded successfully'
         })
+        success_response.headers['Content-Type'] = 'application/json'
+        return success_response
         
     except Exception as e:
         logger.error(f"Error uploading file: {e}", exc_info=True)
-        return jsonify({'success': False, 'error': f'Upload failed: {str(e)}'}), 500
+        error_response = jsonify({'success': False, 'error': f'Upload failed: {str(e)}'})
+        error_response.headers['Content-Type'] = 'application/json'
+        return error_response, 500
 
 @app.route('/api/files/<file_id>', methods=['DELETE'])
 def delete_file(file_id):
