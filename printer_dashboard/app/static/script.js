@@ -49,12 +49,50 @@ class PrintFarmDashboard {
         // Filter controls
         document.getElementById('status-filter').addEventListener('change', (e) => {
             this.filters.status = e.target.value;
+            document.getElementById('mobile-status-filter').value = e.target.value;
             this.applyFilters();
         });
         
         document.getElementById('type-filter').addEventListener('change', (e) => {
             this.filters.type = e.target.value;
+            document.getElementById('mobile-type-filter').value = e.target.value;
             this.applyFilters();
+        });
+        
+        // Mobile filter controls
+        document.getElementById('mobile-status-filter').addEventListener('change', (e) => {
+            this.filters.status = e.target.value;
+            document.getElementById('status-filter').value = e.target.value;
+            this.applyFilters();
+            this.closeMobileMenu();
+        });
+
+        document.getElementById('mobile-type-filter').addEventListener('change', (e) => {
+            this.filters.type = e.target.value;
+            document.getElementById('type-filter').value = e.target.value;
+            this.applyFilters();
+            this.closeMobileMenu();
+        });
+
+        // Mobile menu controls
+        document.querySelector('.menu-toggle').addEventListener('click', () => {
+            document.querySelector('.side-menu').classList.add('show');
+            document.querySelector('.menu-overlay').style.display = 'block';
+        });
+
+        document.querySelector('.menu-overlay').addEventListener('click', () => {
+            this.closeMobileMenu();
+        });
+
+        // Mobile buttons
+        document.getElementById('mobile-files-btn').addEventListener('click', () => {
+            this.showUploadModal();
+            this.closeMobileMenu();
+        });
+
+        document.getElementById('mobile-refresh-btn').addEventListener('click', () => {
+            this.refreshAll();
+            this.closeMobileMenu();
         });
         
         // Modal controls
@@ -193,59 +231,8 @@ class PrintFarmDashboard {
             }
         });
 
-        // Side menu toggle
-        const menuToggle = document.getElementById('menu-toggle');
-        const sideMenu = document.querySelector('.side-menu');
-        const menuOverlay = document.querySelector('.menu-overlay');
-
-        // Desktop and mobile controls
-        const statusFilter = document.getElementById('status-filter');
-        const typeFilter = document.getElementById('type-filter');
-        const statusFilterMobile = document.getElementById('status-filter-mobile');
-        const typeFilterMobile = document.getElementById('type-filter-mobile');
-        const filesBtn = document.getElementById('files-btn');
-        const filesBtnMobile = document.getElementById('files-btn-mobile');
-        const refreshBtn = document.getElementById('refresh-btn');
-        const refreshBtnMobile = document.getElementById('refresh-btn-mobile');
-
-        // Sync mobile and desktop filters
-        statusFilter.addEventListener('change', () => {
-            statusFilterMobile.value = statusFilter.value;
-            this.applyFilters();
-        });
-
-        statusFilterMobile.addEventListener('change', () => {
-            statusFilter.value = statusFilterMobile.value;
-            this.applyFilters();
-        });
-
-        typeFilter.addEventListener('change', () => {
-            typeFilterMobile.value = typeFilter.value;
-            this.applyFilters();
-        });
-
-        typeFilterMobile.addEventListener('change', () => {
-            typeFilter.value = typeFilterMobile.value;
-            this.applyFilters();
-        });
-
-        // Sync mobile and desktop buttons
-        filesBtnMobile.addEventListener('click', () => filesBtn.click());
-        refreshBtnMobile.addEventListener('click', () => refreshBtn.click());
-
-        menuToggle.addEventListener('click', (e) => {
-            e.stopPropagation();
-            sideMenu.classList.toggle('show');
-            menuOverlay.classList.toggle('show');
-            document.body.style.overflow = sideMenu.classList.contains('show') ? 'hidden' : '';
-        });
-
-        // Close menu when clicking overlay
-        menuOverlay.addEventListener('click', () => {
-            sideMenu.classList.remove('show');
-            menuOverlay.classList.remove('show');
-            document.body.style.overflow = '';
-        });
+        // Initialize drag and drop
+        this.initDragAndDrop();
 
         // Close menu when clicking outside
         document.addEventListener('click', (e) => {
@@ -1680,27 +1667,26 @@ class PrintFarmDashboard {
     }
 }
 
-// Initialize the dashboard when the page loads
+// Initialize the dashboard when the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    window.printFarmDashboard = new PrintFarmDashboard();
-    window.printFarmDashboard.initDragAndDrop();
+    window.dashboard = new PrintFarmDashboard();
 });
 
 // Handle page visibility changes to pause/resume updates
 document.addEventListener('visibilitychange', () => {
-    if (window.printFarmDashboard) {
+    if (window.dashboard) {
         if (document.hidden) {
-            window.printFarmDashboard.stopAutoUpdate();
+            window.dashboard.stopAutoUpdate();
         } else {
-            window.printFarmDashboard.startAutoUpdate();
-            window.printFarmDashboard.refreshAll();
+            window.dashboard.startAutoUpdate();
+            window.dashboard.refreshAll();
         }
     }
 });
 
 // Handle beforeunload to cleanup
 window.addEventListener('beforeunload', () => {
-    if (window.printFarmDashboard) {
-        window.printFarmDashboard.stopAutoUpdate();
+    if (window.dashboard) {
+        window.dashboard.stopAutoUpdate();
     }
 }); 
