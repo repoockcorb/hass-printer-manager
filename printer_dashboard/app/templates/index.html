@@ -52,11 +52,11 @@
                             <option value="octoprint">OctoPrint</option>
                         </select>
                     </div>
-                    <button id="upload-btn" class="btn btn-secondary" type="button">
-                        <i class="fas fa-upload"></i>
-                        Upload
+                    <button id="files-btn" class="btn btn-secondary">
+                        <i class="fas fa-folder-open"></i>
+                        Files
                     </button>
-                    <button id="refresh-btn" class="btn btn-primary" type="button">
+                    <button id="refresh-btn" class="btn btn-primary">
                         <i class="fas fa-sync-alt"></i>
                         Refresh
                     </button>
@@ -116,7 +116,6 @@
                 <div class="progress-section">
                     <div class="print-info">
                         <div class="file-name"></div>
-                        <img class="print-thumbnail" src="" alt="Print thumbnail" style="display:none; max-width:100%; border-radius:8px; margin:0.5rem 0;" />
                         <div class="print-progress">
                             <div class="progress-bar">
                                 <div class="progress-fill"></div>
@@ -353,27 +352,149 @@
         </div>
     </div>
 
-    <!-- Upload Modal -->
-    <div id="upload-modal" class="modal" style="display:none;">
-        <div class="modal-content upload-modal-content">
+    <!-- File Management Modal -->
+    <div id="files-modal" class="modal files-modal" style="display: none;">
+        <div class="modal-content files-modal-content">
             <div class="modal-header">
-                <h3>Upload G-code</h3>
-                <button class="modal-close" id="upload-modal-close">&times;</button>
+                <h3>G-Code File Manager</h3>
+                <button class="modal-close files-modal-close">&times;</button>
             </div>
-            <div class="modal-body">
-                <input type="file" id="gcode-file-input" accept=".gcode,.gco,.gc" />
-                <label style="margin-top:1rem; display:block;">Select Printer</label>
-                <select id="printer-select" style="width:100%; padding:0.5rem; border-radius:6px;"></select>
-                <div id="upload-progress" style="margin-top:1rem; display:none;">Uploading...</div>
-                <div id="upload-error" style="color:#f87171; margin-top:0.5rem; display:none;"></div>
+            <div class="modal-body files-modal-body">
+                <!-- Upload Section -->
+                <div class="upload-section">
+                    <div class="upload-area" id="upload-area">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <p class="upload-text">Drag & drop G-code files here or click to browse</p>
+                            <input type="file" id="file-input" accept=".gcode" multiple style="display: none;">
+                            <button class="btn btn-primary upload-btn" id="upload-btn">
+                                <i class="fas fa-plus"></i>
+                                Select Files
+                            </button>
+                        </div>
+                        <div class="upload-progress" id="upload-progress" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="upload-progress-fill"></div>
+                            </div>
+                            <p class="progress-text" id="upload-progress-text">Uploading...</p>
+                        </div>
+                    </div>
+                </div>
 
-                <hr style="margin:1.5rem 0; border:none; border-top:1px solid rgba(148,163,184,0.3);" />
-
-                <h4 style="margin-bottom:0.75rem;">Available Files</h4>
-                <div id="file-list-container" style="max-height:250px; overflow-y:auto;"></div>
+                <!-- Files List Section -->
+                <div class="files-section">
+                    <div class="files-header">
+                        <h4>Uploaded Files</h4>
+                        <div class="files-stats">
+                            <span id="files-count">0 files</span>
+                        </div>
+                    </div>
+                    
+                    <div class="files-list" id="files-list">
+                        <!-- Files will be dynamically generated here -->
+                    </div>
+                    
+                    <!-- Empty Files State -->
+                    <div id="files-empty-state" class="files-empty-state">
+                        <i class="fas fa-file-code"></i>
+                        <p>No G-code files uploaded yet</p>
+                        <p class="empty-subtitle">Upload your first file to get started</p>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
-                <button id="upload-confirm" class="btn btn-primary">Upload</button>
+                <button id="files-close" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Item Template -->
+    <template id="file-item-template">
+        <div class="file-item" data-file-id="">
+            <div class="file-thumbnail">
+                <img class="thumbnail-image" src="" alt="Thumbnail" style="display: none;">
+                <div class="thumbnail-placeholder">
+                    <i class="fas fa-file-code"></i>
+                </div>
+            </div>
+            <div class="file-info">
+                <div class="file-header">
+                    <h5 class="file-name"></h5>
+                    <div class="file-actions">
+                        <button class="btn btn-sm btn-secondary file-download" title="Download">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button class="btn btn-sm btn-danger file-delete" title="Delete">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="file-metadata">
+                    <div class="metadata-row">
+                        <span class="metadata-label">Size:</span>
+                        <span class="file-size"></span>
+                    </div>
+                    <div class="metadata-row">
+                        <span class="metadata-label">Uploaded:</span>
+                        <span class="file-date"></span>
+                    </div>
+                    <div class="metadata-row estimated-time" style="display: none;">
+                        <span class="metadata-label">Est. Time:</span>
+                        <span class="file-estimated-time"></span>
+                    </div>
+                    <div class="metadata-row layer-height" style="display: none;">
+                        <span class="metadata-label">Layer Height:</span>
+                        <span class="file-layer-height"></span>
+                    </div>
+                    <div class="metadata-row infill" style="display: none;">
+                        <span class="metadata-label">Infill:</span>
+                        <span class="file-infill"></span>
+                    </div>
+                    <div class="metadata-row filament-used" style="display: none;">
+                        <span class="metadata-label">Filament:</span>
+                        <span class="file-filament-used"></span>
+                    </div>
+                    <div class="metadata-row temperatures" style="display: none;">
+                        <span class="metadata-label">Temps:</span>
+                        <span class="file-temperatures"></span>
+                    </div>
+                </div>
+                <div class="file-send-section">
+                    <label class="send-label">Send to printer:</label>
+                    <div class="send-controls">
+                        <select class="printer-select">
+                            <option value="">Select printer...</option>
+                        </select>
+                        <button class="btn btn-sm btn-success file-send">
+                            <i class="fas fa-paper-plane"></i>
+                            Send
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Send File Confirmation Modal -->
+    <div id="send-file-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Send File to Printer</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Send <strong id="send-file-name"></strong> to <strong id="send-printer-name"></strong>?</p>
+                <div class="send-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>This will upload the file to the printer. Make sure the printer is ready.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="send-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="send-confirm" class="btn btn-success">
+                    <i class="fas fa-paper-plane"></i>
+                    Send File
+                </button>
             </div>
         </div>
     </div>
