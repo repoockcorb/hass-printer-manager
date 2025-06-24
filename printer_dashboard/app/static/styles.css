@@ -1239,4 +1239,21 @@ body {
 }
 
 .list-header span:first-child { color:#e0e6ed; font-weight:600; }
-.file-count { font-size:0.8rem; } 
+.file-count { font-size:0.8rem; }
+
+.btn-thumb {
+    padding: 0.5rem;
+    background: rgba(71, 85, 105, 0.8);
+    color: #a78bfa;
+    border: 1px solid rgba(167,139,250,0.3);
+    border-radius: 6px;
+    font-size: 0.875rem;
+    min-width: auto;
+    transition: all 0.2s;
+}
+
+.btn-thumb:hover {
+    background: rgba(139,92,246,0.2);
+    border-color:#c084fc;
+    color:#c084fc;
+} 

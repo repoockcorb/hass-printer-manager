@@ -108,6 +108,9 @@
                     <button class="btn btn-camera camera-btn" data-camera-entity="" style="display: none;">
                         <i class="fas fa-video"></i>
                     </button>
+                    <button class="btn btn-thumb thumb-btn" style="display:none;">
+                        <i class="fas fa-image"></i>
+                    </button>
                 </div>
             </div>
             
@@ -386,6 +389,24 @@
             </div>
             <div class="modal-footer">
                 <button id="upload-confirm" class="btn btn-primary">Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Thumbnail Modal -->
+    <div id="thumb-modal" class="modal thumb-modal" style="display:none;">
+        <div class="modal-content" style="max-width:600px;">
+            <div class="modal-header">
+                <h3 id="thumb-modal-title">Thumbnail</h3>
+                <button class="modal-close thumb-modal-close">&times;</button>
+            </div>
+            <div class="modal-body" style="display:flex; justify-content:center; align-items:center;">
+                <img id="thumb-img" src="" alt="Thumbnail" style="max-width:100%; max-height:70vh; display:none;"/>
+                <div id="thumb-loading" class="camera-loading"><div class="spinner"></div><p>Loading...</p></div>
+                <div id="thumb-error" class="camera-error" style="display:none;"><i class="fas fa-exclamation-triangle"></i><p>Thumbnail unavailable</p></div>
+            </div>
+            <div class="modal-footer">
+                <button id="thumb-close" class="btn btn-primary">Close</button>
             </div>
         </div>
     </div>

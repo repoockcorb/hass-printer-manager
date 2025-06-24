@@ -30,6 +30,7 @@ class PrintFarmDashboard {
         this.printerSelect = document.getElementById('printer-select');
 
         this.init();
+        this.setupThumbnailModal();
     }
     
     init() {
@@ -360,20 +361,17 @@ class PrintFarmDashboard {
             progressFill.style.width = `${progVal}%`;
             progressText.textContent = `${progVal}%`;
 
-            // Load thumbnail if file changed
-            if (printer.thumbnailFile !== status.file) {
-                printer.thumbnailFile = status.file;
-                this.loadThumbnail(printerName, status.file, card);
-            }
+            // Show thumbnail button
+            const thumbBtn = card.querySelector('.thumb-btn');
+            if (thumbBtn) thumbBtn.style.display = 'inline-flex';
         } else {
             fileName.textContent = 'No active print';
             progressFill.style.width = '0%';
             progressText.textContent = '0%';
 
-            // Hide thumbnail when not printing
-            const thumbImg = card.querySelector('.print-thumbnail');
-            if (thumbImg) thumbImg.style.display = 'none';
-            printer.thumbnailFile = null;
+            // Show thumbnail button
+            const thumbBtn = card.querySelector('.thumb-btn');
+            if (thumbBtn) thumbBtn.style.display = 'none';
         }
         
         // Update temperatures
@@ -1435,6 +1433,58 @@ class PrintFarmDashboard {
         } finally {
             progressEl.style.display='none';
         }
+    }
+
+    /* ---------------- Thumbnail Modal ---------------- */
+    setupThumbnailModal() {
+        const thumbModal = document.getElementById('thumb-modal');
+        const closeBtn = document.querySelector('.thumb-modal-close');
+        const footerClose = document.getElementById('thumb-close');
+
+        if (closeBtn) closeBtn.addEventListener('click', ()=>this.hideThumbModal());
+        if (footerClose) footerClose.addEventListener('click', ()=>this.hideThumbModal());
+
+        thumbModal.addEventListener('click',(e)=>{ if(e.target===thumbModal) this.hideThumbModal(); });
+
+        // delegate thumb button clicks
+        document.addEventListener('click',(e)=>{
+            const btn=e.target.closest('.thumb-btn');
+            if(btn){
+                const card=btn.closest('.printer-card');
+                const printerName=card.getAttribute('data-printer-name');
+                const printer=this.printers.get(printerName);
+                if(printer && printer.status && printer.status.file){
+                    this.showThumbModal(printerName, printer.status.file);
+                }
+            }
+        });
+    }
+
+    showThumbModal(printerName, fileName){
+        const modal=document.getElementById('thumb-modal');
+        const img=document.getElementById('thumb-img');
+        const load=document.getElementById('thumb-loading');
+        const err=document.getElementById('thumb-error');
+        img.style.display='none'; err.style.display='none'; load.style.display='flex';
+        modal.style.display='flex';
+
+        fetch(`api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(fileName)}`)
+          .then(r=>r.ok?r.blob():Promise.reject())
+          .then(blob=>{
+              const url=URL.createObjectURL(blob);
+              img.src=url;
+              img.onload=()=>URL.revokeObjectURL(url);
+              load.style.display='none';
+              img.style.display='block';
+          })
+          .catch(()=>{
+              load.style.display='none';
+              err.style.display='flex';
+          });
+    }
+
+    hideThumbModal(){
+        document.getElementById('thumb-modal').style.display='none';
     }
 }
 
