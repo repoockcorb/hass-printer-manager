@@ -1293,6 +1293,10 @@ class PrintFarmDashboard {
                 row.style.justifyContent = 'space-between';
                 row.style.padding = '0.25rem 0';
 
+                const thumb = document.createElement('img');
+                thumb.className = 'file-thumb';
+                thumb.src = `api/gcode/thumbnail/${encodeURIComponent(f.name)}`;
+
                 const nameEl = document.createElement('span');
                 nameEl.textContent = f.name;
                 nameEl.style.flex = '1';
@@ -1308,6 +1312,7 @@ class PrintFarmDashboard {
                 sendBtn.textContent = 'Send';
                 sendBtn.setAttribute('data-file', f.name);
 
+                row.appendChild(thumb);
                 row.appendChild(nameEl);
                 row.appendChild(sizeEl);
                 row.appendChild(sendBtn);
@@ -1351,11 +1356,62 @@ class PrintFarmDashboard {
             progressEl.style.display = 'none';
         }
     }
+
+    /* ---------------- Drag & Drop Init ---------------- */
+    initDragAndDrop() {
+        const dz = document.getElementById('gcode-drop-zone');
+        const fileInput = this.gcodeFileInput;
+        const selectBtn = document.getElementById('gcode-select-btn');
+        if (!dz || !fileInput) return;
+
+        const processFiles = (fileList) => {
+            Array.from(fileList).forEach(f => {
+                this.uploadSingleFile(f);
+            });
+        };
+
+        dz.addEventListener('click', () => fileInput.click());
+        if (selectBtn) selectBtn.addEventListener('click', (e)=>{e.stopPropagation();fileInput.click();});
+
+        dz.addEventListener('dragover', (e)=>{e.preventDefault(); dz.classList.add('drag-over');});
+        dz.addEventListener('dragleave', ()=>dz.classList.remove('drag-over'));
+        dz.addEventListener('drop', (e)=>{
+            e.preventDefault(); dz.classList.remove('drag-over');
+            processFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e)=>{
+            processFiles(e.target.files);
+        });
+    }
+
+    async uploadSingleFile(file) {
+        const progressEl = document.getElementById('upload-progress');
+        const errorEl = document.getElementById('upload-error');
+        errorEl.style.display = 'none';
+        progressEl.style.display = 'block';
+        progressEl.textContent = `Uploading ${file.name}...`;
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const resp = await fetch('api/gcode/upload', {method:'POST', body: formData});
+            const json = await resp.json();
+            if (!resp.ok || !json.success) throw new Error(json.error||'Upload failed');
+            this.showNotification(`Uploaded ${file.name}`, 'success');
+            this.loadFileList();
+        } catch(err){
+            errorEl.textContent = err.message;
+            errorEl.style.display='block';
+        } finally {
+            progressEl.style.display='none';
+        }
+    }
 }
 
 // Initialize the dashboard when the page loads
 document.addEventListener('DOMContentLoaded', () => {
     window.printFarmDashboard = new PrintFarmDashboard();
+    window.printFarmDashboard.initDragAndDrop();
 });
 
 // Handle page visibility changes to pause/resume updates

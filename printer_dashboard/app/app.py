@@ -12,6 +12,8 @@ import threading
 import time
 import urllib.parse
 from werkzeug.utils import secure_filename
+import base64
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -24,6 +26,55 @@ GCODE_STORAGE_DIR = '/data/gcode_files'
 
 # Ensure storage directory exists
 os.makedirs(GCODE_STORAGE_DIR, exist_ok=True)
+
+# ---------------- Thumbnail extraction for stored G-code files ----------------
+
+THUMB_RE_BEGIN = re.compile(r";\s*thumbnail begin (\d+)x(\d+) \d+", re.IGNORECASE)
+THUMB_RE_END = re.compile(r";\s*thumbnail end", re.IGNORECASE)
+
+
+def _extract_embedded_thumbnail(path: str):
+    """Parse a G-code file and return PNG bytes if an embedded thumbnail is found."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            collecting = False
+            b64_lines = []
+            for line in fh:
+                if not collecting:
+                    if THUMB_RE_BEGIN.match(line):
+                        collecting = True
+                        continue
+                else:
+                    if THUMB_RE_END.match(line):
+                        break
+                    # Remove leading '; ' or ';'
+                    cleaned = line.lstrip(';').strip()
+                    b64_lines.append(cleaned)
+            if b64_lines:
+                b64_data = "".join(b64_lines)
+                return base64.b64decode(b64_data)
+    except Exception as e:
+        logger.debug(f"No thumbnail extracted from {path}: {e}")
+    return None
+
+
+@app.route('/api/gcode/thumbnail/<path:filename>')
+def get_gcode_thumbnail(filename):
+    """Return thumbnail PNG for stored gcode file or 404."""
+    safe_name = secure_filename(filename)
+    file_path = os.path.join(GCODE_STORAGE_DIR, safe_name)
+    if not os.path.isfile(file_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    img_bytes = _extract_embedded_thumbnail(file_path)
+    if img_bytes:
+        return Response(img_bytes, mimetype='image/png')
+
+    # fallback placeholder (1x1 transparent png)
+    placeholder = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+    )
+    return Response(placeholder, mimetype='image/png')
 
 class PrinterAPI:
     """Base class for printer API interactions"""

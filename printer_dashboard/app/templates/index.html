@@ -361,9 +361,18 @@
                 <button class="modal-close" id="upload-modal-close">&times;</button>
             </div>
             <div class="modal-body">
-                <input type="file" id="gcode-file-input" accept=".gcode,.gco,.gc" />
-                <label style="margin-top:1rem; display:block;">Select Printer</label>
-                <select id="printer-select" style="width:100%; padding:0.5rem; border-radius:6px;"></select>
+                <div class="drop-zone" id="gcode-drop-zone">
+                    <i class="fas fa-cloud-upload-alt cloud-icon"></i>
+                    <p class="dz-text">Drag & drop G-code files here or click to browse</p>
+                    <button class="btn btn-primary" id="gcode-select-btn"><i class="fas fa-plus"></i> Select Files</button>
+                    <input type="file" id="gcode-file-input" accept=".gcode,.gco,.gc" multiple hidden>
+                </div>
+
+                <div class="printer-picker">
+                    <label>Select Printer</label>
+                    <select id="printer-select"></select>
+                </div>
+
                 <div id="upload-progress" style="margin-top:1rem; display:none;">Uploading...</div>
                 <div id="upload-error" style="color:#f87171; margin-top:0.5rem; display:none;"></div>
 
