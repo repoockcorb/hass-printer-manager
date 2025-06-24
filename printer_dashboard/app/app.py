@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
 
+# Configure Flask for file uploads
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
+
 # Directory to store uploaded gcode files (persistent in HA add-on)
 GCODE_STORAGE_DIR = '/data/gcode_files'
 
@@ -1657,6 +1660,12 @@ def upload_gcode():
     except Exception as e:
         logger.error(f"Error uploading gcode: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# Add error handler for file upload size limit
+@app.errorhandler(413)
+def too_large(e):
+    logger.error("File upload too large - 413 error")
+    return jsonify({'success': False, 'error': 'File too large. Maximum size is 100MB.'}), 413
 
 @app.route('/api/gcode/send', methods=['POST'])
 def send_gcode_to_printer():
