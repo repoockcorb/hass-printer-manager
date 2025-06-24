@@ -1201,20 +1201,17 @@ class PrintFarmDashboard {
     async loadThumbnail(printerName, file, card) {
         try {
             const response = await fetch(`api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(file)}`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const blob = await response.blob();
-            const objectURL = URL.createObjectURL(blob);
-            
-            const thumbImg = card.querySelector('.print-thumbnail');
-            if (thumbImg) {
-                thumbImg.src = objectURL;
-                thumbImg.style.display = 'block';
+            if (response.ok) {
+                const blob = await response.blob();
+                const objectURL = URL.createObjectURL(blob);
+                const thumbImg = card.querySelector('.print-thumbnail');
+                if (thumbImg) {
+                    thumbImg.src = objectURL;
+                    thumbImg.style.display = 'block';
+                }
             }
         } catch (error) {
-            console.error(`Error loading thumbnail for ${printerName}:`, error);
+            // Silently fail; backend already returns placeholder PNG
         }
     }
 

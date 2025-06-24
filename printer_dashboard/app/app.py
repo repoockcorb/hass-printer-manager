@@ -1531,12 +1531,17 @@ def get_thumbnail(printer_name):
                 if printer.api_key:
                     headers['X-Api-Key'] = printer.api_key
 
+        # Placeholder transparent PNG (1×1)
+        placeholder_png = base64.b64decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=='
+        )
+
         if not remote_url:
-            return jsonify({'error': 'Thumbnail not available'}), 404
+            return Response(placeholder_png, mimetype='image/png')
 
         data, content_type = _proxy_thumbnail(remote_url, headers=headers)
         if data is None:
-            return jsonify({'error': 'Failed to fetch thumbnail'}), 502
+            return Response(placeholder_png, mimetype='image/png')
 
         return Response(data, mimetype=content_type)
 
