@@ -1202,13 +1202,4 @@ body {
     color: #e0e6ed;
     padding: 0.5rem 0.75rem;
     font-size: 0.875rem;
-}
-
-.btn-icon {
-    padding: 0.45rem 0.6rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.25rem;
-    font-size: 0.8rem;
 } 
