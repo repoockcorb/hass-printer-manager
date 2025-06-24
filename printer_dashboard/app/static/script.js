@@ -193,33 +193,29 @@ class PrintFarmDashboard {
             }
         });
 
-        // Hamburger menu toggle
+        // Side menu toggle
         const menuToggle = document.getElementById('menu-toggle');
-        const filterSection = document.querySelector('.filter-section');
-        const actionButtons = document.querySelector('.action-buttons');
+        const sideMenu = document.querySelector('.side-menu');
         const menuOverlay = document.querySelector('.menu-overlay');
 
         menuToggle.addEventListener('click', (e) => {
             e.stopPropagation();
-            filterSection.classList.toggle('show');
-            actionButtons.classList.toggle('show');
+            sideMenu.classList.toggle('show');
             menuOverlay.classList.toggle('show');
-            document.body.style.overflow = filterSection.classList.contains('show') ? 'hidden' : '';
+            document.body.style.overflow = sideMenu.classList.contains('show') ? 'hidden' : '';
         });
 
         // Close menu when clicking overlay
         menuOverlay.addEventListener('click', () => {
-            filterSection.classList.remove('show');
-            actionButtons.classList.remove('show');
+            sideMenu.classList.remove('show');
             menuOverlay.classList.remove('show');
             document.body.style.overflow = '';
         });
 
         // Close menu when clicking outside
         document.addEventListener('click', (e) => {
-            if (!e.target.closest('.header-controls') || e.target.closest('.menu-overlay')) {
-                filterSection.classList.remove('show');
-                actionButtons.classList.remove('show');
+            if (!e.target.closest('.side-menu') && !e.target.closest('.menu-toggle')) {
+                sideMenu.classList.remove('show');
                 menuOverlay.classList.remove('show');
                 document.body.style.overflow = '';
             }
