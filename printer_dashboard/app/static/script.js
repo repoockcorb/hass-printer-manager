@@ -1372,6 +1372,24 @@ class PrintFarmDashboard {
         }
     }
 
+    // Delete stored file and refresh list
+    async deleteFile(fileName) {
+        const confirmDelete = confirm(`Delete ${fileName}?`);
+        if (!confirmDelete) return;
+
+        try {
+            const resp = await fetch(`api/gcode/files/${encodeURIComponent(fileName)}`, {method: 'DELETE'});
+            const json = await resp.json();
+            if (!resp.ok || !json.success) {
+                throw new Error(json.error || 'Delete failed');
+            }
+            this.showNotification(`Deleted ${fileName}`, 'success');
+            this.loadFileList();
+        } catch (err) {
+            this.showNotification(err.message, 'error');
+        }
+    }
+
     /* ---------------- Drag & Drop Init ---------------- */
     initDragAndDrop() {
         const dz = document.getElementById('gcode-drop-zone');
