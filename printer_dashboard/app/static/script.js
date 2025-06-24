@@ -198,6 +198,41 @@ class PrintFarmDashboard {
         const sideMenu = document.querySelector('.side-menu');
         const menuOverlay = document.querySelector('.menu-overlay');
 
+        // Desktop and mobile controls
+        const statusFilter = document.getElementById('status-filter');
+        const typeFilter = document.getElementById('type-filter');
+        const statusFilterMobile = document.getElementById('status-filter-mobile');
+        const typeFilterMobile = document.getElementById('type-filter-mobile');
+        const filesBtn = document.getElementById('files-btn');
+        const filesBtnMobile = document.getElementById('files-btn-mobile');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const refreshBtnMobile = document.getElementById('refresh-btn-mobile');
+
+        // Sync mobile and desktop filters
+        statusFilter.addEventListener('change', () => {
+            statusFilterMobile.value = statusFilter.value;
+            this.applyFilters();
+        });
+
+        statusFilterMobile.addEventListener('change', () => {
+            statusFilter.value = statusFilterMobile.value;
+            this.applyFilters();
+        });
+
+        typeFilter.addEventListener('change', () => {
+            typeFilterMobile.value = typeFilter.value;
+            this.applyFilters();
+        });
+
+        typeFilterMobile.addEventListener('change', () => {
+            typeFilter.value = typeFilterMobile.value;
+            this.applyFilters();
+        });
+
+        // Sync mobile and desktop buttons
+        filesBtnMobile.addEventListener('click', () => filesBtn.click());
+        refreshBtnMobile.addEventListener('click', () => refreshBtn.click());
+
         menuToggle.addEventListener('click', (e) => {
             e.stopPropagation();
             sideMenu.classList.toggle('show');

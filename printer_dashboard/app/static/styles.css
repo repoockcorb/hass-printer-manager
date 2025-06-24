@@ -30,10 +30,25 @@ body {
 }
 
 .header-content {
+    max-width: 1400px;
+    margin: 0 auto;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0 1rem;
+    gap: 2rem;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    flex-shrink: 0;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 
 .app-title {
@@ -43,13 +58,70 @@ body {
     align-items: center;
     gap: 0.5rem;
     white-space: nowrap;
+    color: var(--primary-color);
 }
 
 .app-title i {
     color: #34d399;
 }
 
+/* Status Summary */
+.status-summary {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.summary-count {
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.summary-count.printing {
+    color: var(--success-color);
+}
+
+.summary-count.idle {
+    color: var(--primary-color);
+}
+
+.summary-count.offline {
+    color: var(--error-color);
+}
+
+.summary-label {
+    font-size: 0.875rem;
+    color: var(--text-color);
+    opacity: 0.8;
+}
+
+/* Desktop Controls */
+.desktop-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.filter-section {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Menu Toggle */
 .menu-toggle {
+    display: none;
     background: none;
     border: none;
     color: var(--text-color);
@@ -65,6 +137,7 @@ body {
 
 /* Side Menu */
 .side-menu {
+    display: none;
     position: fixed;
     top: 0;
     right: -300px;
@@ -74,7 +147,6 @@ body {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     padding: 4rem 1rem 1rem;
-    display: flex;
     flex-direction: column;
     gap: 2rem;
     z-index: 1000;
@@ -84,58 +156,6 @@ body {
 
 .side-menu.show {
     right: 0;
-}
-
-/* Status Summary in Side Menu */
-.status-summary {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-    padding: 1rem;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 0.5rem;
-}
-
-.summary-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.5rem;
-}
-
-.summary-count {
-    font-size: 1.25rem;
-    font-weight: 600;
-}
-
-.summary-label {
-    font-size: 0.875rem;
-    color: var(--text-color);
-    opacity: 0.8;
-}
-
-/* Filter Section */
-.filter-section {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.filter-select {
-    width: 100%;
-}
-
-/* Action Buttons */
-.action-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
-
-.btn {
-    width: 100%;
-    justify-content: flex-start;
 }
 
 /* Overlay */
@@ -721,58 +741,49 @@ body {
 }
 
 /* Responsive Design */
+@media (max-width: 1024px) {
+    .desktop-controls {
+        display: none;
+    }
+
+    .menu-toggle {
+        display: block;
+    }
+
+    .side-menu {
+        display: flex;
+    }
+}
+
 @media (max-width: 768px) {
-    .app-header {
-        padding: 1rem;
-    }
-    
     .header-content {
-        flex-direction: column;
-        gap: 1rem;
-        align-items: stretch;
+        padding: 0 1rem;
     }
-    
-    .header-left {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
+
     .status-summary {
-        justify-content: space-around;
-    }
-    
-    .main-content {
-        padding: 1rem;
-    }
-    
-    .printers-grid {
-        grid-template-columns: 1fr;
         gap: 1rem;
     }
-    
-    .printer-card {
-        padding: 1rem;
+
+    .summary-item {
+        font-size: 0.875rem;
     }
-    
-    .temp-group,
-    .time-section,
-    .position-section {
-        flex-direction: column;
+}
+
+@media (max-width: 640px) {
+    .header-left {
+        gap: 1rem;
+    }
+
+    .status-summary {
         gap: 0.5rem;
     }
-    
-    .card-footer {
-        flex-direction: column;
-        gap: 1rem;
-        align-items: stretch;
+
+    .summary-count {
+        font-size: 1rem;
     }
-    
-    .control-buttons {
-        justify-content: center;
-    }
-    
-    .last-update {
-        text-align: center;
+
+    .summary-label {
+        font-size: 0.75rem;
     }
 }
 
