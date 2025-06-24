@@ -1415,17 +1415,36 @@ class FileManager {
         try {
             this.showUploadProgress(0);
             
+            console.log(`Starting upload of ${file.name} (${file.size} bytes)`);
+            
             const response = await fetch('/api/files/upload', {
                 method: 'POST',
                 body: formData
             });
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || 'Upload failed');
+            console.log(`Upload response status: ${response.status}`);
+            
+            let result;
+            const contentType = response.headers.get('content-type');
+            
+            if (contentType && contentType.includes('application/json')) {
+                result = await response.json();
+            } else {
+                // Handle non-JSON responses (e.g., HTML error pages)
+                const text = await response.text();
+                console.error('Non-JSON response:', text);
+                throw new Error(`Server returned non-JSON response (${response.status}): ${text.substring(0, 100)}...`);
             }
 
-            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || `Server error: ${response.status}`);
+            }
+
+            if (!result.success) {
+                throw new Error(result.error || 'Upload failed');
+            }
+
+            console.log('Upload successful:', result);
             this.showNotification(`${file.name} uploaded successfully`, 'success');
             
             // Reload files list
@@ -1433,7 +1452,16 @@ class FileManager {
 
         } catch (error) {
             console.error('Upload error:', error);
-            this.showNotification(`Upload failed: ${error.message}`, 'error');
+            
+            // Provide more specific error messages
+            let errorMessage = error.message;
+            if (errorMessage.includes('JSON')) {
+                errorMessage = 'Server configuration error. Please check the logs.';
+            } else if (errorMessage.includes('NetworkError') || errorMessage.includes('fetch')) {
+                errorMessage = 'Network error. Please check your connection.';
+            }
+            
+            this.showNotification(`Upload failed: ${errorMessage}`, 'error');
         } finally {
             this.hideUploadProgress();
         }
