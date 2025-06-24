@@ -23,7 +23,7 @@ class PrintFarmDashboard {
         
         // File upload modal elements (query DOM early)
         this.uploadModal = document.getElementById('upload-modal');
-        this.uploadBtn = document.getElementById('upload-btn');
+        this.uploadBtn = document.getElementById('files-btn');
         this.uploadCloseBtn = document.getElementById('upload-modal-close');
         this.uploadConfirmBtn = document.getElementById('upload-confirm');
         this.gcodeFileInput = document.getElementById('gcode-file-input');
@@ -159,7 +159,7 @@ class PrintFarmDashboard {
 
         // Fallback: event delegation to capture clicks in complex ingress DOMs
         document.addEventListener('click', (e) => {
-            const target = e.target.closest('#upload-btn');
+            const target = e.target.closest('#files-btn');
             if (target) {
                 e.preventDefault();
                 this.showUploadModal();
