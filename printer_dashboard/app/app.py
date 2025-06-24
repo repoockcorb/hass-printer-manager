@@ -37,9 +37,10 @@ def after_request(response):
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     
-    # Allow mixed content for development (remove in production)
-    if request.is_secure:
-        response.headers['Content-Security-Policy'] = "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data:; img-src 'self' data: https:;"
+    # Allow mixed content for development and HA ingress
+    # More permissive CSP for Home Assistant ingress compatibility
+    if request.is_secure or request.headers.get('X-Forwarded-Proto') == 'https':
+        response.headers['Content-Security-Policy'] = "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http: data: blob:; img-src 'self' data: https: http: blob:; frame-src 'self' https: http:; connect-src 'self' https: http: ws: wss:;"
     
     return response
 
@@ -2041,6 +2042,99 @@ def download_file(file_id):
     except Exception as e:
         logger.error(f"Error downloading file: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/test-basic')
+def test_basic():
+    """Basic test page to check if Flask and templates are working"""
+    return '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Basic Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; }
+        .result { margin: 10px 0; padding: 10px; background: #f8f9fa; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <h1>Basic Flask Test</h1>
+    
+    <div class="test-section">
+        <h3>1. Page Loading Test</h3>
+        <div class="result success">✓ HTML template is loading correctly</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>2. JavaScript Test</h3>
+        <button onclick="testJS()">Test JavaScript</button>
+        <div id="jsResult" class="result">Click button to test</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>3. API Health Test</h3>
+        <button onclick="testAPI()">Test API</button>
+        <div id="apiResult" class="result">Click button to test</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>4. Static Files Test</h3>
+        <button onclick="testStatic()">Test Static Files</button>
+        <div id="staticResult" class="result">Click button to test</div>
+    </div>
+    
+    <div class="test-section">
+        <h3>5. Navigation Test</h3>
+        <a href="/" style="padding: 10px; background: #007bff; color: white; text-decoration: none; border-radius: 3px;">Go to Main Dashboard</a>
+    </div>
+    
+    <script>
+        function testJS() {
+            document.getElementById('jsResult').textContent = '✓ JavaScript is working correctly';
+            document.getElementById('jsResult').className = 'result success';
+        }
+        
+        async function testAPI() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                document.getElementById('apiResult').textContent = '✓ API is working: ' + JSON.stringify(data.status);
+                document.getElementById('apiResult').className = 'result success';
+            } catch (error) {
+                document.getElementById('apiResult').textContent = '✗ API Error: ' + error.message;
+                document.getElementById('apiResult').className = 'result error';
+            }
+        }
+        
+        async function testStatic() {
+            try {
+                const response = await fetch('/static/styles.css');
+                if (response.ok) {
+                    document.getElementById('staticResult').textContent = '✓ Static files are accessible';
+                    document.getElementById('staticResult').className = 'result success';
+                } else {
+                    throw new Error('Static file returned ' + response.status);
+                }
+            } catch (error) {
+                document.getElementById('staticResult').textContent = '✗ Static files error: ' + error.message;
+                document.getElementById('staticResult').className = 'result error';
+            }
+        }
+        
+        // Auto-run tests on load
+        window.addEventListener('load', () => {
+            testJS();
+            setTimeout(() => {
+                testAPI();
+                testStatic();
+            }, 500);
+        });
+    </script>
+</body>
+</html>
+    '''
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")

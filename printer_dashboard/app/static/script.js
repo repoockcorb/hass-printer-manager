@@ -32,18 +32,40 @@ class PrintFarmDashboard {
     }
     
     setupEventListeners() {
+        // Helper function to safely add event listener
+        const safeAddEventListener = (selector, event, handler) => {
+            const element = typeof selector === 'string' ? document.getElementById(selector) : selector;
+            if (element) {
+                element.addEventListener(event, handler);
+                return true;
+            } else {
+                console.warn(`Element not found: ${selector}`);
+                return false;
+            }
+        };
+        
+        const safeQuerySelector = (selector, handler) => {
+            const element = document.querySelector(selector);
+            if (element && handler) {
+                return handler(element);
+            } else if (!element) {
+                console.warn(`Element not found: ${selector}`);
+            }
+            return element;
+        };
+        
         // Refresh button
-        document.getElementById('refresh-btn').addEventListener('click', () => {
+        safeAddEventListener('refresh-btn', 'click', () => {
             this.refreshAll();
         });
         
         // Filter controls
-        document.getElementById('status-filter').addEventListener('change', (e) => {
+        safeAddEventListener('status-filter', 'change', (e) => {
             this.filters.status = e.target.value;
             this.applyFilters();
         });
         
-        document.getElementById('type-filter').addEventListener('change', (e) => {
+        safeAddEventListener('type-filter', 'change', (e) => {
             this.filters.type = e.target.value;
             this.applyFilters();
         });
@@ -53,15 +75,17 @@ class PrintFarmDashboard {
         const closeBtn = document.querySelector('.modal-close');
         const cancelBtn = document.getElementById('modal-cancel');
         
-        closeBtn.addEventListener('click', () => this.hideModal());
-        cancelBtn.addEventListener('click', () => this.hideModal());
+        if (closeBtn) closeBtn.addEventListener('click', () => this.hideModal());
+        if (cancelBtn) cancelBtn.addEventListener('click', () => this.hideModal());
         
         // Click outside modal to close
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                this.hideModal();
-            }
-        });
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    this.hideModal();
+                }
+            });
+        }
         
         // Camera modal controls
         const cameraModal = document.getElementById('camera-modal');
@@ -74,11 +98,13 @@ class PrintFarmDashboard {
         if (cameraRefreshBtn) cameraRefreshBtn.addEventListener('click', () => this.refreshCameraFeed());
         
         // Click outside camera modal to close
-        cameraModal.addEventListener('click', (e) => {
-            if (e.target === cameraModal) {
-                this.hideCameraModal();
-            }
-        });
+        if (cameraModal) {
+            cameraModal.addEventListener('click', (e) => {
+                if (e.target === cameraModal) {
+                    this.hideCameraModal();
+                }
+            });
+        }
         
         // Movement modal controls
         const movementModal = document.getElementById('movement-modal');
@@ -89,11 +115,13 @@ class PrintFarmDashboard {
         if (movementCloseFooterBtn) movementCloseFooterBtn.addEventListener('click', () => this.hideMovementModal());
         
         // Click outside movement modal to close
-        movementModal.addEventListener('click', (e) => {
-            if (e.target === movementModal) {
-                this.hideMovementModal();
-            }
-        });
+        if (movementModal) {
+            movementModal.addEventListener('click', (e) => {
+                if (e.target === movementModal) {
+                    this.hideMovementModal();
+                }
+            });
+        }
         
         // Distance selector buttons
         document.addEventListener('click', (e) => {
