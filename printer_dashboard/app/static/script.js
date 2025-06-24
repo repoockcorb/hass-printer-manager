@@ -760,6 +760,7 @@ class PrintFarmDashboard {
         const modal = document.getElementById('camera-modal');
         const title = document.getElementById('camera-modal-title');
         const stream = document.getElementById('camera-stream');
+        const videoStream = document.getElementById('camera-stream-video');
         const loading = document.getElementById('camera-loading');
         const error = document.getElementById('camera-error');
         
@@ -770,6 +771,7 @@ class PrintFarmDashboard {
         modal.style.display = 'flex';
         loading.style.display = 'flex';
         stream.style.display = 'none';
+        videoStream.style.display = 'none';
         error.style.display = 'none';
         
         this.currentCameraPrinter = printerName;
@@ -863,55 +865,81 @@ class PrintFarmDashboard {
         if (!this.currentCameraPrinter) return;
         
         const stream = document.getElementById('camera-stream');
+        const videoStream = document.getElementById('camera-stream-video');
         const loading = document.getElementById('camera-loading');
         const error = document.getElementById('camera-error');
         
         try {
-            // Get the dynamic base URL using our smart detection
-            const baseUrl = await this.getDynamicBaseUrl();
+            // Hide both stream elements initially
+            stream.style.display = 'none';
+            videoStream.style.display = 'none';
+            loading.style.display = 'flex';
+            error.style.display = 'none';
             
-            // Get fresh snapshot URL with dynamic base_url
-            const timestamp = Date.now();
-            const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot?base_url=${encodeURIComponent(baseUrl)}&_=${timestamp}`);
-            
-            if (!snapshotResponse.ok) {
-                throw new Error(`API request failed: ${snapshotResponse.status} ${snapshotResponse.statusText}`);
+            // Get the stream source info
+            const response = await fetch(`api/camera/${this.currentCameraPrinter}/stream_source`);
+            if (!response.ok) {
+                throw new Error(`API request failed: ${response.status} ${response.statusText}`);
             }
             
-            const snapshotData = await snapshotResponse.json();
+            const sourceData = await response.json();
+            console.log('Camera source data:', sourceData);
             
-            console.log('API Response:', snapshotData); // Debug log
-            console.log('Using base URL:', baseUrl); // Debug log
-            
-            if (snapshotData.snapshot_url) {
-                // Use the snapshot URL directly without any modifications
-                const imageUrl = snapshotData.snapshot_url;
-                
-                console.log('Loading image from URL:', imageUrl); // Debug log
-                
+            if (sourceData.type === 'hls') {
+                // Use HLS.js for HLS streaming
+                if (Hls.isSupported()) {
+                    const hls = new Hls();
+                    hls.loadSource(sourceData.url);
+                    hls.attachMedia(videoStream);
+                    
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                        videoStream.play();
+                        loading.style.display = 'none';
+                        videoStream.style.display = 'block';
+                    });
+                    
+                    hls.on(Hls.Events.ERROR, (event, data) => {
+                        console.error('HLS error:', data);
+                        if (data.fatal) {
+                            loading.style.display = 'none';
+                            error.style.display = 'flex';
+                            error.querySelector('p').textContent = 'Stream playback error';
+                        }
+                    });
+                    
+                    // Clean up previous HLS instance
+                    if (this.hlsInstance) {
+                        this.hlsInstance.destroy();
+                    }
+                    this.hlsInstance = hls;
+                    
+                    // Stop snapshot refresh if it was running
+                    this.stopCameraRefresh();
+                } else if (videoStream.canPlayType('application/vnd.apple.mpegurl')) {
+                    // For Safari - native HLS support
+                    videoStream.src = sourceData.url;
+                    videoStream.addEventListener('loadedmetadata', () => {
+                        videoStream.play();
+                        loading.style.display = 'none';
+                        videoStream.style.display = 'block';
+                    });
+                }
+            } else if (sourceData.type === 'snapshot') {
+                // Fallback to snapshot mode
                 stream.onload = () => {
                     loading.style.display = 'none';
                     stream.style.display = 'block';
-                    error.style.display = 'none';
-                    console.log('✅ Camera image loaded successfully at:', new Date().toLocaleTimeString()); // Debug log
                 };
                 
                 stream.onerror = (e) => {
                     loading.style.display = 'none';
                     error.style.display = 'flex';
                     error.querySelector('p').textContent = 'Failed to load camera image';
-                    console.error('❌ Camera image failed to load:', e); // Debug log
-                    console.error('Failed URL:', imageUrl); // Debug log
-                    console.error('Current time:', new Date().toLocaleTimeString());
+                    console.error('Camera image failed to load:', e);
                 };
                 
-                // Set the image source directly
-                stream.src = imageUrl;
-                
-                // Start auto-refresh to get fresh images
+                stream.src = sourceData.url;
                 this.startCameraRefresh();
-            } else {
-                throw new Error(snapshotData.error || 'No snapshot_url in response');
             }
         } catch (err) {
             console.error('Error loading camera feed:', err);
@@ -924,9 +952,18 @@ class PrintFarmDashboard {
     hideCameraModal() {
         const modal = document.getElementById('camera-modal');
         const stream = document.getElementById('camera-stream');
+        const videoStream = document.getElementById('camera-stream-video');
         
         modal.style.display = 'none';
         stream.src = '';
+        videoStream.src = '';
+        
+        // Clean up HLS instance if it exists
+        if (this.hlsInstance) {
+            this.hlsInstance.destroy();
+            this.hlsInstance = null;
+        }
+        
         this.currentCameraPrinter = null;
         this.stopCameraRefresh();
     }

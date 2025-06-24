@@ -655,141 +655,38 @@ class HomeAssistantAPI:
     
     def __init__(self, url=None, token=None):
         # For internal API calls, use supervisor URL
-        self.internal_url = (url or os.environ.get('SUPERVISOR_URL', 'http://supervisor/core')).rstrip('/')
-        self.token = token or os.environ.get('SUPERVISOR_TOKEN', '')
+        self.supervisor_url = os.environ.get('SUPERVISOR_URL', 'http://supervisor/core')
+        self.supervisor_token = os.environ.get('SUPERVISOR_TOKEN')
         
-        # For camera URLs that browsers need to access, we need the external HA URL
-        # Try to determine the external URL from the request context
-        self.external_url = None
+        # For external URLs (camera feeds etc)
+        self.external_url = url or os.environ.get('HOME_ASSISTANT_URL')
+        self.token = token or self.supervisor_token
         
-        logger.info(f"HomeAssistantAPI initialized with internal URL: {self.internal_url}")
-        logger.info(f"Supervisor token available: {'Yes' if self.token else 'No'}")
-        if self.token:
-            logger.info(f"Supervisor token (first 10 chars): {self.token[:10]}...")
-        else:
-            logger.warning("No supervisor token available - camera access may fail")
-    
-    def _get_external_ha_url(self, base_url=None):
-        """Get the external Home Assistant URL that browsers can access"""
-        if base_url:
-            # Use the provided base URL from the frontend
-            # But force HTTPS for Nabu Casa cloud URLs
-            if '.ui.nabu.casa' in base_url and base_url.startswith('http://'):
-                base_url = base_url.replace('http://', 'https://')
-                logger.info(f"Forced HTTPS for Nabu Casa URL: {base_url}")
+        if not self.supervisor_token and not self.token:
+            logger.warning("No Home Assistant authentication token available")
             
-            logger.info(f"Using provided base URL: {base_url}")
-            return base_url.rstrip('/')
-            
+    def get_camera_stream_source(self, entity_id):
+        """Get the HLS stream URL for a camera entity"""
         try:
-            # Try to get from Flask request context
-            from flask import request
-            if request:
-                # Extract the base URL from the current request
-                host = request.host
-                scheme = request.scheme
+            # First check if the camera supports native HLS
+            response = self._make_request(f'api/camera_proxy_stream/{entity_id}')
+            if response and response.get('url'):
+                return {
+                    'type': 'hls',
+                    'url': response['url']
+                }
                 
-                # Force HTTPS for Nabu Casa domains
-                if '.ui.nabu.casa' in host:
-                    scheme = 'https'
-                    logger.info(f"Forced HTTPS for Nabu Casa domain: {host}")
-                
-                external_url = f"{scheme}://{host}"
-                logger.info(f"Detected external HA URL from request: {external_url}")
-                return external_url
-        except Exception as e:
-            logger.warning(f"Could not detect external HA URL from request: {e}")
-        
-        # Fallback: assume standard HA port
-        return "http://homeassistant.local:8123"
-    
-    def _make_request(self, endpoint, method='GET', timeout=10):
-        """Make HTTP request to Home Assistant API using internal URL"""
-        try:
-            headers = {
-                'Authorization': f'Bearer {self.token}',
-                'Content-Type': 'application/json',
-                'Cache-Control': 'no-cache'
-            }
-            
-            url = f"{self.internal_url}/api/{endpoint.lstrip('/')}"
-            
-            # Add cache-busting parameter for state requests
-            if 'states/' in endpoint:
-                url += f"?_={int(time.time() * 1000)}"
-            
-            if method == 'GET':
-                response = requests.get(url, headers=headers, timeout=timeout)
-            else:
-                raise ValueError(f"Unsupported method: {method}")
-                
-            response.raise_for_status()
-            return response.json() if response.text else None
-            
-        except Exception as e:
-            logger.error(f"Home Assistant request failed: {e}")
-            return None
-    
-    def get_camera_snapshot_url(self, entity_id, base_url=None):
-        """Get camera snapshot URL with proper authSig JWT tokens"""
-        try:
-            logger.info(f"Getting camera snapshot for entity: {entity_id}")
-            if base_url:
-                logger.info(f"Using dynamic base URL from frontend: {base_url}")
-            else:
-                logger.info("No base URL provided, will auto-detect from request context")
-            
-            # First, get the entity_picture which contains the properly signed URL
-            entity_state = self._make_request(f'states/{entity_id}')
-            if not entity_state:
-                logger.error(f"No entity state returned for {entity_id}")
-                return None
-            
-            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
-            if not entity_picture:
-                logger.error(f"No entity_picture found for {entity_id}")
-                return None
-            
-            logger.info(f"Entity picture URL: {entity_picture}")
-            
-            # The entity_picture contains the signed URL with authSig token
-            # Convert it to external URL that browsers can access
-            external_url = self._get_external_ha_url(base_url)
-            logger.info(f"Using external HA URL: {external_url}")
-            
-            # The entity_picture is a relative URL like:
-            # /api/camera_proxy/camera.prusa_mk3s_mmu3?token=abc123&authSig=JWT_TOKEN
-            if entity_picture.startswith('/'):
-                full_camera_url = f"{external_url}{entity_picture}"
-            else:
-                # If it's already a full URL, replace the base
-                full_camera_url = entity_picture.replace(self.internal_url, external_url)
-            
-            logger.info(f"Final camera URL with authSig: {full_camera_url}")
-            return full_camera_url
-                
-        except Exception as e:
-            logger.error(f"Error getting camera snapshot URL for {entity_id}: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return None
-    
-    def get_camera_stream_url(self, entity_id, base_url=None):
-        """Get camera stream URL for entity"""
-        try:
-            # For streams, we'll use the snapshot URL approach since streams 
-            # use the same token mechanism
-            snapshot_url = self.get_camera_snapshot_url(entity_id, base_url)
-            if snapshot_url and 'camera_proxy/' in snapshot_url:
-                # Convert snapshot to stream URL
-                stream_url = snapshot_url.replace('/api/camera_proxy/', '/api/camera_proxy_stream/')
-                logger.info(f"Camera stream URL for {entity_id}: {stream_url}")
-                return stream_url
+            # Fallback to snapshot URL if streaming not supported
+            snapshot_url = self.get_camera_snapshot_url(entity_id)
+            if snapshot_url:
+                return {
+                    'type': 'snapshot',
+                    'url': snapshot_url
+                }
                 
             return None
-            
         except Exception as e:
-            logger.error(f"Error getting camera stream URL for {entity_id}: {e}")
+            logger.error(f"Failed to get camera stream source: {e}")
             return None
 
 # Initialize Home Assistant API
@@ -966,9 +863,9 @@ def get_ha_info():
         # Try to get HA config
         ha_config = {}
         try:
-            ha_config['internal_url'] = ha_api.internal_url
+            ha_config['internal_url'] = ha_api.supervisor_url
             # Try to detect external URL from request
-            external_url = ha_api._get_external_ha_url()
+            external_url = ha_api.external_url
             ha_config['detected_external_url'] = external_url
         except Exception as e:
             logger.warning(f"Could not get HA config info: {e}")
@@ -1058,6 +955,38 @@ def debug_config():
         
         return jsonify(debug_info)
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/camera/<printer_name>/stream_source')
+def get_camera_stream_source(printer_name):
+    """Get the appropriate streaming source for a printer's camera"""
+    try:
+        # Get printer configuration
+        storage = PrinterStorage()
+        printers = storage.get_printers()
+        
+        if printer_name not in printers:
+            return jsonify({'error': 'Printer not found'}), 404
+            
+        printer_config = printers[printer_name]
+        camera_entity = printer_config.get('camera_entity')
+        
+        if not camera_entity:
+            return jsonify({'error': 'No camera configured for this printer'}), 404
+            
+        # Initialize HA API
+        ha_api = HomeAssistantAPI()
+        
+        # Get stream source
+        stream_source = ha_api.get_camera_stream_source(camera_entity)
+        
+        if not stream_source:
+            return jsonify({'error': 'Could not get camera stream source'}), 404
+            
+        return jsonify(stream_source)
+        
+    except Exception as e:
+        logger.error(f"Error getting camera stream source: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/camera/<printer_name>/stream')

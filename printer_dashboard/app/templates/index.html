@@ -219,7 +219,8 @@
             </div>
             <div class="modal-body camera-modal-body">
                 <div class="camera-container">
-                    <img id="camera-stream" src="" alt="Camera feed" style="display: none;">
+                    <video id="camera-stream-video" style="display: none; width: 100%; max-height: 80vh;" controls autoplay muted></video>
+                    <img id="camera-stream" src="" alt="Camera feed" style="display: none; width: 100%; max-height: 80vh;">
                     <div id="camera-loading" class="camera-loading">
                         <div class="spinner"></div>
                         <p>Loading camera feed...</p>
@@ -411,6 +412,8 @@
         </div>
     </div>
 
-    <script src="static/script.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/js/all.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html> 
