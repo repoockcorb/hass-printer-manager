@@ -74,8 +74,13 @@ class PrinterAPI:
 class KlipperAPI(PrinterAPI):
     """Moonraker API for Klipper printers"""
     
-    def _send_gcode(self, gcode_command):
-        """Send G-code command to Moonraker using URL parameters"""
+    def _send_gcode(self, gcode_command, timeout=30):
+        """Send G-code command to Moonraker using URL parameters
+        
+        Args:
+            gcode_command: The G-code to send
+            timeout: Timeout in seconds (default 30 for movement commands)
+        """
         try:
             # Encode the G-code command for URL
             encoded_gcode = urllib.parse.quote(gcode_command)
@@ -86,9 +91,9 @@ class KlipperAPI(PrinterAPI):
                 headers['Authorization'] = f'Bearer {self.api_key}'
                 
             url = f"{self.url}/{endpoint}"
-            logger.info(f"{self.name} sending G-code via URL: {url}")
+            logger.info(f"{self.name} sending G-code via URL: {url} (timeout: {timeout}s)")
             
-            response = requests.post(url, headers=headers, timeout=5)
+            response = requests.post(url, headers=headers, timeout=timeout)
             logger.info(f"{self.name} G-code response status: {response.status_code}")
             
             # Check if the request was successful
@@ -109,6 +114,9 @@ class KlipperAPI(PrinterAPI):
             
             return result
             
+        except requests.exceptions.Timeout as e:
+            logger.error(f"{self.name} G-code command timed out after {timeout}s: {e}")
+            return None
         except requests.exceptions.RequestException as e:
             logger.error(f"{self.name} G-code HTTP request failed: {e}")
             return None
@@ -228,12 +236,14 @@ class KlipperAPI(PrinterAPI):
         if axes is None or axes == 'all':
             # Home all axes with a single G28 command
             gcode = "G28"
+            timeout = 60  # Homing all axes can take a long time
             logger.info(f"{self.name} homing all axes: {gcode}")
         elif isinstance(axes, str):
             # Home a single axis
             axis = axes.upper()
             if axis in ['X', 'Y', 'Z']:
                 gcode = f"G28 {axis}"
+                timeout = 45  # Single axis homing is usually faster
                 logger.info(f"{self.name} homing {axis} axis: {gcode}")
             else:
                 logger.error(f"{self.name} invalid axis for homing: {axes}")
@@ -243,6 +253,7 @@ class KlipperAPI(PrinterAPI):
             valid_axes = [ax.upper() for ax in axes if ax.upper() in ['X', 'Y', 'Z']]
             if valid_axes:
                 gcode = f"G28 {' '.join(valid_axes)}"
+                timeout = 50  # Multiple axes
                 logger.info(f"{self.name} homing axes {valid_axes}: {gcode}")
             else:
                 logger.error(f"{self.name} no valid axes for homing: {axes}")
@@ -251,17 +262,18 @@ class KlipperAPI(PrinterAPI):
             logger.error(f"{self.name} invalid axes parameter: {axes}")
             return {'success': False, 'error': f'Invalid axes parameter: {axes}'}
         
-        # Use the new _send_gcode method for Moonraker
-        result = self._send_gcode(gcode)
+        # Use the new _send_gcode method for Moonraker with appropriate timeout
+        logger.info(f"{self.name} starting homing operation (timeout: {timeout}s)")
+        result = self._send_gcode(gcode, timeout=timeout)
         
         # Check if the G-code was sent successfully
         # Moonraker returns None on failure, but may return empty dict {} on success
         if result is not None:
-            logger.info(f"{self.name} home command successful: {result}")
+            logger.info(f"{self.name} home command completed successfully: {result}")
             return {'success': True, 'result': result}
         else:
-            logger.error(f"{self.name} home command failed")
-            return {'success': False, 'error': 'G-code command failed'}
+            logger.error(f"{self.name} home command failed or timed out")
+            return {'success': False, 'error': 'Homing command failed or timed out'}
     
     def jog_printer(self, axis, distance):
         """Jog printer in specified axis by distance (in mm)"""
@@ -279,19 +291,23 @@ class KlipperAPI(PrinterAPI):
         # Use relative positioning with safer feedrate
         # G91: relative mode, G0: rapid move, G90: absolute mode
         gcode = f"G91\nG0 {axis}{distance} F1800\nG90"
-        logger.info(f"{self.name} jogging {axis}{distance:+.1f}mm: {gcode.replace(chr(10), ' | ')}")
         
-        # Use the new _send_gcode method for Moonraker
-        result = self._send_gcode(gcode)
+        # Jog timeout based on distance (larger moves take longer)
+        timeout = max(15, min(30, abs(distance) * 2))  # 15-30 seconds based on distance
+        
+        logger.info(f"{self.name} jogging {axis}{distance:+.1f}mm: {gcode.replace(chr(10), ' | ')} (timeout: {timeout}s)")
+        
+        # Use the new _send_gcode method for Moonraker with appropriate timeout
+        result = self._send_gcode(gcode, timeout=timeout)
         
         # Check if the G-code was sent successfully
         # Moonraker returns None on failure, but may return empty dict {} on success
         if result is not None:
-            logger.info(f"{self.name} jog command successful: {result}")
+            logger.info(f"{self.name} jog command completed successfully: {result}")
             return {'success': True, 'result': result}
         else:
-            logger.error(f"{self.name} jog command failed")
-            return {'success': False, 'error': 'G-code command failed'}
+            logger.error(f"{self.name} jog command failed or timed out")
+            return {'success': False, 'error': 'Jog command failed or timed out'}
 
 class OctoPrintAPI(PrinterAPI):
     """OctoPrint API for OctoPrint printers"""

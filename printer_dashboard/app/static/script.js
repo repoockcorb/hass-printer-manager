@@ -19,6 +19,7 @@ class PrintFarmDashboard {
         };
         this.selectedDistance = 0.1; // Default jog distance
         this.currentMovementPrinter = null; // Track which printer's movement modal is open
+        this.isMovementInProgress = false; // Track movement command progress
         
         this.init();
     }
@@ -962,11 +963,24 @@ class PrintFarmDashboard {
     async performHomeAction(axes) {
         if (!this.currentMovementPrinter) return;
         
+        // Prevent multiple simultaneous commands
+        if (this.isMovementInProgress) {
+            this.showNotification('Movement command already in progress', 'warning');
+            return;
+        }
+        
+        this.isMovementInProgress = true;
+        this.setMovementButtonsState(false); // Disable buttons
+        
         try {
             // Check if we need to use direct control
             const directInfo = this.getDirectControlInfo(this.currentMovementPrinter);
             
             let response, requestData = {};
+            
+            // Show loading notification
+            const axesText = axes || 'all axes';
+            this.showNotification(`Homing ${axesText}... Please wait`, 'info');
             
             if (directInfo) {
                 // Use direct control API
@@ -1010,7 +1024,7 @@ class PrintFarmDashboard {
             const result = await response.json();
             
             if (result.success) {
-                this.showNotification(`Homing ${axes || 'all axes'} successful`, 'success');
+                this.showNotification(`Homing ${axesText} completed successfully`, 'success');
             } else {
                 this.showNotification(`Homing failed: ${result.error}`, 'error');
             }
@@ -1018,15 +1032,30 @@ class PrintFarmDashboard {
         } catch (error) {
             console.error('Error performing home action:', error);
             this.showNotification(`Homing failed: ${error.message}`, 'error');
+        } finally {
+            this.isMovementInProgress = false;
+            this.setMovementButtonsState(true); // Re-enable buttons
         }
     }
     
     async performJogAction(axis, direction) {
         if (!this.currentMovementPrinter || !this.selectedDistance) return;
         
+        // Prevent multiple simultaneous commands
+        if (this.isMovementInProgress) {
+            this.showNotification('Movement command already in progress', 'warning');
+            return;
+        }
+        
+        this.isMovementInProgress = true;
+        this.setMovementButtonsState(false); // Disable buttons
+        
         const distance = this.selectedDistance * direction;
         
         try {
+            // Show loading notification
+            this.showNotification(`Jogging ${axis}${distance > 0 ? '+' : ''}${distance}mm... Please wait`, 'info');
+            
             // Check if we need to use direct control
             const directInfo = this.getDirectControlInfo(this.currentMovementPrinter);
             
@@ -1073,7 +1102,7 @@ class PrintFarmDashboard {
             const result = await response.json();
             
             if (result.success) {
-                this.showNotification(`Jogged ${axis}${distance > 0 ? '+' : ''}${distance}mm`, 'success');
+                this.showNotification(`Jogged ${axis}${distance > 0 ? '+' : ''}${distance}mm successfully`, 'success');
             } else {
                 this.showNotification(`Jog failed: ${result.error}`, 'error');
             }
@@ -1081,7 +1110,29 @@ class PrintFarmDashboard {
         } catch (error) {
             console.error('Error performing jog action:', error);
             this.showNotification(`Jog failed: ${error.message}`, 'error');
+        } finally {
+            this.isMovementInProgress = false;
+            this.setMovementButtonsState(true); // Re-enable buttons
         }
+    }
+    
+    setMovementButtonsState(enabled) {
+        /**
+         * Enable or disable movement control buttons
+         */
+        const modal = document.getElementById('movement-modal');
+        if (!modal) return;
+        
+        const buttons = modal.querySelectorAll('button');
+        buttons.forEach(button => {
+            if (enabled) {
+                button.disabled = false;
+                button.style.opacity = '1';
+            } else {
+                button.disabled = true;
+                button.style.opacity = '0.6';
+            }
+        });
     }
 }
 
