@@ -519,13 +519,13 @@ class PrintFarmDashboard {
         let totalCount = 0;
         let printingCount = 0;
         let idleCount = 0;
-        let offlineCount = 0;
+        let errorCount = 0;
         
         for (const [name, printer] of this.printers.entries()) {
             totalCount++;
             
             if (!printer.status || !printer.status.online) {
-                offlineCount++;
+                errorCount++;
             } else {
                 const state = printer.status.state.toLowerCase();
                 if (['printing'].includes(state)) {
@@ -536,10 +536,10 @@ class PrintFarmDashboard {
             }
         }
         
-        document.getElementById('total-printers').textContent = totalCount;
+        document.getElementById('total-count').textContent = totalCount;
         document.getElementById('printing-count').textContent = printingCount;
         document.getElementById('idle-count').textContent = idleCount;
-        document.getElementById('offline-count').textContent = offlineCount;
+        document.getElementById('error-count').textContent = errorCount;
     }
     
     applyFilters() {
