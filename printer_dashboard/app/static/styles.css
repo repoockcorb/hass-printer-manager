@@ -1112,4 +1112,43 @@ body {
     border-radius: 8px;
     margin-bottom: 0.5rem;
     object-fit: contain;
+}
+
+.upload-modal-content {
+    max-width: 600px;
+}
+
+#file-list-container {
+    border: 1px solid rgba(148,163,184,0.15);
+    border-radius: 8px;
+    background: rgba(30,41,59,0.5);
+}
+
+.file-row {
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid rgba(148,163,184,0.08);
+    transition: background 0.2s;
+}
+
+.file-row:last-child {
+    border-bottom: none;
+}
+
+.file-row:hover {
+    background: rgba(71,85,105,0.3);
+}
+
+.file-row span {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.btn-send-file {
+    padding: 0.4rem 0.85rem;
+    font-size: 0.75rem;
 } 

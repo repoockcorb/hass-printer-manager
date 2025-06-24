@@ -1259,21 +1259,10 @@ class PrintFarmDashboard {
             if (!uploadResp.ok || !uploadResJson.success) {
                 throw new Error(uploadResJson.error || 'Upload failed');
             }
-            const fileName = uploadResJson.file;
 
-            // 2. Send file to printer
-            const sendResp = await fetch('api/gcode/send', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ printer, file: fileName, start: true })
-            });
-            const sendJson = await sendResp.json();
-            if (!sendResp.ok || !sendJson.success) {
-                throw new Error(sendJson.error || 'Send failed');
-            }
-
-            this.showNotification(`File sent to ${printer} successfully`, 'success');
-            this.hideUploadModal();
+            this.showNotification(`File "${uploadResJson.file}" uploaded`, 'success');
+            // Clear file input and refresh list
+            if (this.gcodeFileInput) this.gcodeFileInput.value = '';
             this.loadFileList();
         } catch (err) {
             console.error('Upload error', err);
