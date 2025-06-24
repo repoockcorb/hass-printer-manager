@@ -1413,6 +1413,79 @@ def test_moonraker_connection(host, port, timeout=1):
     except Exception:
         return False
 
+# Helper to fetch and proxy remote thumbnail images
+
+def _proxy_thumbnail(remote_url: str, headers=None, timeout: int = 10):
+    """Fetch a remote image and return (bytes, content_type) or (None, None) on failure."""
+    try:
+        resp = requests.get(remote_url, headers=headers or {}, timeout=timeout, stream=True)
+        resp.raise_for_status()
+        content_type = resp.headers.get('Content-Type', 'image/png')
+        data = resp.content
+        return data, content_type
+    except Exception as e:
+        logger.error(f"Failed to proxy thumbnail from {remote_url}: {e}")
+        return None, None
+
+
+@app.route('/api/thumbnail/<printer_name>')
+def get_thumbnail(printer_name):
+    """Proxy thumbnail image for the given printer and file.
+
+    Query parameters:
+        file: The file name currently printing (should match exactly what is reported in status.file).
+    """
+    try:
+        file_name = request.args.get('file')
+        if not file_name:
+            return jsonify({'error': 'Missing file parameter'}), 400
+
+        if printer_name not in printer_manager.printers:
+            return jsonify({'error': 'Printer not found'}), 404
+
+        printer = printer_manager.printers[printer_name]
+        remote_url = None
+        headers = {}
+
+        if printer.printer_type == 'klipper':
+            # Moonraker metadata provides thumbnail relative paths
+            meta_endpoint = f"server/files/metadata?filename={urllib.parse.quote(file_name)}"
+            meta = printer._make_request(meta_endpoint)
+            thumbnails = (meta or {}).get('result', {}).get('metadata', {}).get('thumbnails', [])
+            if thumbnails:
+                # Choose the largest thumbnail available (usually last item)
+                thumb = sorted(thumbnails, key=lambda t: t.get('size', 0))[-1]
+                rel_path = thumb.get('relative_path') or thumb.get('path')
+                if rel_path:
+                    # Construct absolute Moonraker URL; handle leading slashes
+                    if rel_path.startswith('/'):
+                        remote_url = f"{printer.url}{rel_path}"
+                    else:
+                        remote_url = f"{printer.url}/{rel_path}"
+        elif printer.printer_type == 'octoprint':
+            # OctoPrint file metadata contains a direct thumbnail URL
+            meta_endpoint = f"api/files/local/{urllib.parse.quote(file_name, safe='')}"
+            meta = printer._make_request(meta_endpoint)
+            thumb_path = (meta or {}).get('thumbnail')
+            if thumb_path:
+                remote_url = f"{printer.url}{thumb_path}" if thumb_path.startswith('/') else f"{printer.url}/{thumb_path}"
+                # OctoPrint thumbnails are typically served without auth, but include API key if provided
+                if printer.api_key:
+                    headers['X-Api-Key'] = printer.api_key
+
+        if not remote_url:
+            return jsonify({'error': 'Thumbnail not available'}), 404
+
+        data, content_type = _proxy_thumbnail(remote_url, headers=headers)
+        if data is None:
+            return jsonify({'error': 'Failed to fetch thumbnail'}), 502
+
+        return Response(data, mimetype=content_type)
+
+    except Exception as e:
+        logger.error(f"Error fetching thumbnail for {printer_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
     app.run(host='127.0.0.1', port=5001, debug=False) 

@@ -162,7 +162,8 @@ class PrintFarmDashboard {
                 this.printers.set(config.name, {
                     config: config,
                     status: null,
-                    lastUpdate: null
+                    lastUpdate: null,
+                    thumbnailFile: null // Track which file's thumbnail is loaded
                 });
                 
                 // Log extracted connection info if debug enabled
@@ -307,10 +308,21 @@ class PrintFarmDashboard {
             fileName.textContent = status.file;
             progressFill.style.width = `${status.progress}%`;
             progressText.textContent = `${status.progress}%`;
+
+            // Load thumbnail if file changed
+            if (printer.thumbnailFile !== status.file) {
+                printer.thumbnailFile = status.file;
+                this.loadThumbnail(printerName, status.file, card);
+            }
         } else {
             fileName.textContent = 'No active print';
             progressFill.style.width = '0%';
             progressText.textContent = '0%';
+
+            // Hide thumbnail when not printing
+            const thumbImg = card.querySelector('.print-thumbnail');
+            if (thumbImg) thumbImg.style.display = 'none';
+            printer.thumbnailFile = null;
         }
         
         // Update temperatures
@@ -1133,6 +1145,26 @@ class PrintFarmDashboard {
                 button.style.opacity = '0.6';
             }
         });
+    }
+
+    async loadThumbnail(printerName, file, card) {
+        try {
+            const response = await fetch(`api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(file)}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const blob = await response.blob();
+            const objectURL = URL.createObjectURL(blob);
+            
+            const thumbImg = card.querySelector('.print-thumbnail');
+            if (thumbImg) {
+                thumbImg.src = objectURL;
+                thumbImg.style.display = 'block';
+            }
+        } catch (error) {
+            console.error(`Error loading thumbnail for ${printerName}:`, error);
+        }
     }
 }
 
