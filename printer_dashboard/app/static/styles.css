@@ -21,10 +21,9 @@ body {
 
 /* Header Styles */
 .app-header {
-    background: rgba(30, 41, 59, 0.95);
-    backdrop-filter: blur(10px);
-    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
-    padding: 1rem 2rem;
+    background-color: var(--background-color);
+    padding: 1rem;
+    border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
     z-index: 100;
@@ -43,15 +42,16 @@ body {
     display: flex;
     align-items: center;
     gap: 2rem;
+    flex-shrink: 0;
 }
 
 .app-title {
     font-size: 1.5rem;
-    font-weight: 700;
-    color: #60a5fa;
+    margin: 0;
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    white-space: nowrap;
 }
 
 .app-title i {
@@ -61,13 +61,14 @@ body {
 .status-summary {
     display: flex;
     gap: 1.5rem;
+    align-items: center;
 }
 
 .summary-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    text-align: center;
+    gap: 0.25rem;
 }
 
 .summary-count {
