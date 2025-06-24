@@ -862,6 +862,26 @@ def control_printer(printer_name, action):
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/printer/<printer_name>/print/<action>', methods=['POST'])
+def printer_print_control(printer_name, action):
+    """API endpoint to control print jobs (pause, resume, cancel)"""
+    try:
+        logger.info(f"Print control request: {printer_name} -> {action}")
+        
+        # Validate action
+        allowed_actions = ['pause', 'resume', 'cancel']
+        if action not in allowed_actions:
+            return jsonify({'success': False, 'error': f'Invalid action: {action}. Allowed: {allowed_actions}'}), 400
+        
+        result = printer_manager.control_printer(printer_name, action)
+        logger.info(f"Print control result: {result}")
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"Error controlling print on {printer_name}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/health')
 def health_check():
     """Health check endpoint"""

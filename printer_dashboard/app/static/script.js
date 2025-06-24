@@ -541,6 +541,7 @@ class PrintFarmDashboard {
             const directInfo=this.getDirectControlInfo(printerName);
 
             const directSupported=['home','jog','gcode'];
+            const printActions=['pause','resume','cancel'];
 
             if(directInfo && directSupported.includes(action)){
                 // use direct Moonraker control for supported actions
@@ -552,8 +553,16 @@ class PrintFarmDashboard {
                 }
                 if(directInfo.api_key) body.api_key=directInfo.api_key;
                 response=await fetch(url,{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+            }else if(printActions.includes(action)){
+                // use new printer/print API for print control actions
+                response = await fetch(`api/printer/${printerName}/print/${action}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
             }else{
-                // regular routed API
+                // regular routed API for other actions
                 response = await fetch(`api/control/${printerName}/${action}`, {
                     method: 'POST',
                     headers: {
