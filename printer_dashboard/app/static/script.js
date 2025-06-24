@@ -192,6 +192,24 @@ class PrintFarmDashboard {
                 this.deleteFile(file);
             }
         });
+
+        // Hamburger menu toggle
+        const menuToggle = document.getElementById('menu-toggle');
+        const filterSection = document.querySelector('.filter-section');
+        const actionButtons = document.querySelector('.action-buttons');
+
+        menuToggle.addEventListener('click', () => {
+            filterSection.classList.toggle('show');
+            actionButtons.classList.toggle('show');
+        });
+
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.header-controls')) {
+                filterSection.classList.remove('show');
+                actionButtons.classList.remove('show');
+            }
+        });
     }
     
     async loadPrinters() {

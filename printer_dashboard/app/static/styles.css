@@ -1256,4 +1256,75 @@ body {
     background: rgba(139,92,246,0.2);
     border-color:#c084fc;
     color:#c084fc;
+}
+
+/* Header Controls */
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.filter-section {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-size: 1.5rem;
+    padding: 0.5rem;
+    cursor: pointer;
+}
+
+.menu-toggle:hover {
+    color: var(--primary-color);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .header-controls {
+        position: relative;
+    }
+
+    .filter-section,
+    .action-buttons {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: var(--background-color);
+        padding: 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        flex-direction: column;
+        min-width: 200px;
+        z-index: 1000;
+    }
+
+    .filter-section.show,
+    .action-buttons.show {
+        display: flex;
+    }
+
+    .menu-toggle {
+        display: block;
+    }
+
+    .filter-select {
+        width: 100%;
+    }
+
+    .btn {
+        width: 100%;
+        justify-content: flex-start;
+    }
 } 

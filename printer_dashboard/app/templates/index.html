@@ -37,10 +37,10 @@
                         </span>
                     </div>
                 </div>
-                <div class="header-right">
-                    <div class="filter-controls">
+                <div class="header-controls">
+                    <div class="filter-section">
                         <select id="status-filter" class="filter-select">
-                            <option value="all">All Statuses</option>
+                            <option value="all">All Status</option>
                             <option value="printing">Printing</option>
                             <option value="idle">Idle</option>
                             <option value="paused">Paused</option>
@@ -52,13 +52,18 @@
                             <option value="octoprint">OctoPrint</option>
                         </select>
                     </div>
-                    <button id="files-btn" class="btn btn-secondary" type="button">
-                        <i class="fas fa-file"></i>
-                        Files
-                    </button>
-                    <button id="refresh-btn" class="btn btn-primary" type="button">
-                        <i class="fas fa-sync-alt"></i>
-                        Refresh
+                    <div class="action-buttons">
+                        <button id="files-btn" class="btn btn-secondary" type="button">
+                            <i class="fas fa-file"></i>
+                            <span class="btn-text">Files</span>
+                        </button>
+                        <button id="refresh-btn" class="btn btn-primary" type="button">
+                            <i class="fas fa-sync-alt"></i>
+                            <span class="btn-text">Refresh</span>
+                        </button>
+                    </div>
+                    <button id="menu-toggle" class="btn menu-toggle" type="button">
+                        <i class="fas fa-bars"></i>
                     </button>
                 </div>
             </div>
