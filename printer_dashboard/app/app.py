@@ -76,6 +76,28 @@ def get_gcode_thumbnail(filename):
     )
     return Response(placeholder, mimetype='image/png')
 
+@app.route('/files/thumbnail')
+def get_file_thumbnail():
+    """Return thumbnail PNG for stored gcode file using simplified path format."""
+    filename = request.args.get('filename') or request.args.get('file')
+    if not filename:
+        return jsonify({'error': 'Missing filename parameter'}), 400
+
+    safe_name = secure_filename(filename)
+    file_path = os.path.join(GCODE_STORAGE_DIR, safe_name)
+    if not os.path.isfile(file_path):
+        return jsonify({'error': 'File not found'}), 404
+
+    img_bytes = _extract_embedded_thumbnail(file_path)
+    if img_bytes:
+        return Response(img_bytes, mimetype='image/png')
+
+    # fallback placeholder (1x1 transparent png)
+    placeholder = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=="
+    )
+    return Response(placeholder, mimetype='image/png')
+
 class PrinterAPI:
     """Base class for printer API interactions"""
     
