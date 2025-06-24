@@ -540,7 +540,7 @@ class PrintFarmDashboard {
             let response;
             const directInfo=this.getDirectControlInfo(printerName);
 
-            const directSupported=['home','jog','gcode','pause','resume','cancel'];
+            const directSupported=['home','jog','gcode'];
 
             if(directInfo && directSupported.includes(action)){
                 // use direct Moonraker control for supported actions
