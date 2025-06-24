@@ -1652,6 +1652,20 @@ def send_gcode_to_printer():
         logger.error(f"Error sending gcode to printer: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/gcode/files/<path:filename>', methods=['DELETE'])
+def delete_gcode_file(filename):
+    safe_name = secure_filename(filename)
+    file_path = os.path.join(GCODE_STORAGE_DIR, safe_name)
+    if not os.path.exists(file_path):
+        return jsonify({'success': False, 'error': 'File not found'}), 404
+    try:
+        os.remove(file_path)
+        logger.info(f"Deleted gcode file {file_path}")
+        return jsonify({'success': True})
+    except Exception as e:
+        logger.error(f"Error deleting gcode {file_path}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
     app.run(host='127.0.0.1', port=5001, debug=False) 

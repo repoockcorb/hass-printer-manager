@@ -181,6 +181,12 @@ class PrintFarmDashboard {
                 const file = btn.getAttribute('data-file');
                 this.sendExistingFile(file);
             }
+
+            const del = e.target.closest('.btn-delete-file');
+            if (del) {
+                const file = del.getAttribute('data-file');
+                this.deleteFile(file);
+            }
         });
     }
     
@@ -1295,7 +1301,7 @@ class PrintFarmDashboard {
 
                 const thumb = document.createElement('img');
                 thumb.className = 'file-thumb';
-                thumb.src = `api/gcode/thumbnail/${encodeURIComponent(f.name)}`;
+                thumb.src = `api/gcode/thumbnail/${encodeURIComponent(f.name)}?t=${Date.now()}`;
 
                 const nameEl = document.createElement('span');
                 nameEl.textContent = f.name;
@@ -1308,16 +1314,25 @@ class PrintFarmDashboard {
                 sizeEl.style.color = '#94a3b8';
 
                 const sendBtn = document.createElement('button');
-                sendBtn.className = 'btn btn-primary btn-send-file';
-                sendBtn.textContent = 'Send';
+                sendBtn.className = 'btn btn-primary btn-icon btn-send-file';
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
                 sendBtn.setAttribute('data-file', f.name);
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn btn-danger btn-icon btn-delete-file';
+                delBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                delBtn.setAttribute('data-file', f.name);
 
                 row.appendChild(thumb);
                 row.appendChild(nameEl);
                 row.appendChild(sizeEl);
                 row.appendChild(sendBtn);
+                row.appendChild(delBtn);
                 container.appendChild(row);
             });
+
+            // update counter
+            document.getElementById('file-count').textContent = `${files.length} file${files.length!==1?'s':''}`;
         } catch (err) {
             container.innerHTML = `<p style="color:#f87171;">Error: ${err.message}</p>`;
         }
@@ -1354,6 +1369,19 @@ class PrintFarmDashboard {
             errorEl.style.display = 'block';
         } finally {
             progressEl.style.display = 'none';
+        }
+    }
+
+    async deleteFile(fileName) {
+        if (!confirm(`Delete ${fileName}?`)) return;
+        try {
+            const resp = await fetch(`api/gcode/files/${encodeURIComponent(fileName)}`, {method:'DELETE'});
+            const json = await resp.json();
+            if (!resp.ok || !json.success) throw new Error(json.error||'Delete failed');
+            this.showNotification(`Deleted ${fileName}`, 'success');
+            this.loadFileList();
+        } catch(err) {
+            this.showNotification(err.message, 'error');
         }
     }
 
