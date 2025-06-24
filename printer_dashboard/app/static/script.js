@@ -156,6 +156,15 @@ class PrintFarmDashboard {
             this.uploadBtn.addEventListener('click', () => this.showUploadModal());
         }
 
+        // Fallback: event delegation to capture clicks in complex ingress DOMs
+        document.addEventListener('click', (e) => {
+            const target = e.target.closest('#upload-btn');
+            if (target) {
+                e.preventDefault();
+                this.showUploadModal();
+            }
+        });
+
         if (this.uploadCloseBtn) {
             this.uploadCloseBtn.addEventListener('click', () => this.hideUploadModal());
         }
