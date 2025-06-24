@@ -1326,7 +1326,7 @@ class PrintFarmDashboard {
 
                 const thumb = document.createElement('img');
                 thumb.className = 'file-thumb';
-                thumb.src = `api/gcode/thumbnail/${encodeURIComponent(f.name)}`;
+                thumb.src = `files/thumbnail?filename=${encodeURIComponent(f.name)}`;
 
                 const nameEl = document.createElement('span');
                 nameEl.textContent = f.name;
@@ -1496,7 +1496,7 @@ class PrintFarmDashboard {
         modal.style.display='flex';
 
         const tryUrls=[
-            `api/gcode/thumbnail/${encodeURIComponent(fileName)}`,
+            `files/thumbnail?filename=${encodeURIComponent(fileName)}`,
             `api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(fileName)}`
         ];
 
