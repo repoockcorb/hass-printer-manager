@@ -1709,14 +1709,22 @@ def send_gcode_to_printer():
                 headers = {'X-Api-Key': printer.api_key} if printer.api_key else {}
                 upload_url = f"{printer.url}/api/files/local"
                 logger.info(f"Uploading {file_name} to OctoPrint {printer_name}")
-                resp = requests.post(upload_url, headers=headers, files=files, timeout=120)
-                resp.raise_for_status()
+                
+                # Prepare form data for OctoPrint
+                form_data = {}
                 if start_print:
-                    select_url = f"{printer.url}/api/job"
-                    job_data = {'command': 'select', 'print': True, 'file': file_name}
-                    req_headers = headers.copy()
-                    req_headers['Content-Type'] = 'application/json'
-                    requests.post(select_url, headers=req_headers, json=job_data, timeout=10)
+                    form_data['print'] = 'true'  # Tell OctoPrint to start printing immediately
+                
+                resp = requests.post(upload_url, headers=headers, files=files, data=form_data, timeout=120)
+                logger.info(f"OctoPrint upload response: {resp.status_code}")
+                if resp.text:
+                    logger.info(f"OctoPrint upload response body: {resp.text}")
+                resp.raise_for_status()
+                
+                # If not starting print immediately, we need to select and start it manually
+                if not start_print:
+                    # File uploaded but not printing - could add manual selection logic here if needed
+                    pass
             else:
                 return jsonify({'success': False, 'error': 'Unsupported printer type'}), 400
 
