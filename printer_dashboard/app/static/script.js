@@ -1136,9 +1136,445 @@ class PrintFarmDashboard {
     }
 }
 
+// File Management Class
+class FileManager {
+    constructor() {
+        this.files = [];
+        this.printers = [];
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        // Files button
+        document.getElementById('files-btn').addEventListener('click', () => {
+            this.showFilesModal();
+        });
+
+        // Files modal controls
+        const filesModal = document.getElementById('files-modal');
+        const filesCloseBtn = document.querySelector('.files-modal-close');
+        const filesCloseFooterBtn = document.getElementById('files-close');
+
+        if (filesCloseBtn) filesCloseBtn.addEventListener('click', () => this.hideFilesModal());
+        if (filesCloseFooterBtn) filesCloseFooterBtn.addEventListener('click', () => this.hideFilesModal());
+
+        // Click outside modal to close
+        filesModal.addEventListener('click', (e) => {
+            if (e.target === filesModal) {
+                this.hideFilesModal();
+            }
+        });
+
+        // Upload controls
+        const uploadBtn = document.getElementById('upload-btn');
+        const fileInput = document.getElementById('file-input');
+        const uploadArea = document.getElementById('upload-area');
+
+        uploadBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            this.handleFileSelect({ target: { files: e.dataTransfer.files } });
+        });
+
+        // Send file modal controls
+        const sendFileModal = document.getElementById('send-file-modal');
+        const sendCloseBtn = sendFileModal.querySelector('.modal-close');
+        const sendCancelBtn = document.getElementById('send-cancel');
+        const sendConfirmBtn = document.getElementById('send-confirm');
+
+        if (sendCloseBtn) sendCloseBtn.addEventListener('click', () => this.hideSendFileModal());
+        if (sendCancelBtn) sendCancelBtn.addEventListener('click', () => this.hideSendFileModal());
+        if (sendConfirmBtn) sendConfirmBtn.addEventListener('click', () => this.confirmSendFile());
+
+        // Click outside send modal to close
+        sendFileModal.addEventListener('click', (e) => {
+            if (e.target === sendFileModal) {
+                this.hideSendFileModal();
+            }
+        });
+
+        // File actions delegation
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.file-download')) {
+                const fileId = e.target.closest('.file-item').getAttribute('data-file-id');
+                this.downloadFile(fileId);
+            } else if (e.target.closest('.file-delete')) {
+                const fileId = e.target.closest('.file-item').getAttribute('data-file-id');
+                this.deleteFile(fileId);
+            } else if (e.target.closest('.file-send')) {
+                const fileItem = e.target.closest('.file-item');
+                const fileId = fileItem.getAttribute('data-file-id');
+                const printerSelect = fileItem.querySelector('.printer-select');
+                const printerName = printerSelect.value;
+                
+                if (!printerName) {
+                    this.showNotification('Please select a printer first', 'warning');
+                    return;
+                }
+                
+                this.showSendFileModal(fileId, printerName);
+            }
+        });
+    }
+
+    async showFilesModal() {
+        document.getElementById('files-modal').style.display = 'flex';
+        await this.loadFiles();
+        await this.loadPrinters();
+    }
+
+    hideFilesModal() {
+        document.getElementById('files-modal').style.display = 'none';
+    }
+
+    async loadFiles() {
+        try {
+            const response = await fetch('/api/files');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            this.files = await response.json();
+            this.renderFiles();
+        } catch (error) {
+            console.error('Error loading files:', error);
+            this.showNotification('Failed to load files', 'error');
+        }
+    }
+
+    async loadPrinters() {
+        try {
+            const response = await fetch('/api/printers');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            this.printers = await response.json();
+            this.updatePrinterSelects();
+        } catch (error) {
+            console.error('Error loading printers:', error);
+        }
+    }
+
+    updatePrinterSelects() {
+        const printerSelects = document.querySelectorAll('.printer-select');
+        printerSelects.forEach(select => {
+            // Clear existing options except the first one
+            while (select.children.length > 1) {
+                select.removeChild(select.lastChild);
+            }
+
+            // Add printer options
+            this.printers.forEach(printer => {
+                const option = document.createElement('option');
+                option.value = printer.name;
+                option.textContent = printer.name;
+                select.appendChild(option);
+            });
+        });
+    }
+
+    renderFiles() {
+        const filesList = document.getElementById('files-list');
+        const filesEmptyState = document.getElementById('files-empty-state');
+        const filesCount = document.getElementById('files-count');
+
+        filesCount.textContent = `${this.files.length} file${this.files.length !== 1 ? 's' : ''}`;
+
+        if (this.files.length === 0) {
+            filesList.style.display = 'none';
+            filesEmptyState.style.display = 'block';
+            return;
+        }
+
+        filesList.style.display = 'flex';
+        filesEmptyState.style.display = 'none';
+
+        filesList.innerHTML = '';
+
+        this.files.forEach(file => {
+            const fileItem = this.createFileItem(file);
+            filesList.appendChild(fileItem);
+        });
+
+        // Update printer selects after rendering
+        this.updatePrinterSelects();
+    }
+
+    createFileItem(file) {
+        const template = document.getElementById('file-item-template');
+        const fileItem = template.content.cloneNode(true);
+
+        const container = fileItem.querySelector('.file-item');
+        container.setAttribute('data-file-id', file.id);
+
+        // File name
+        fileItem.querySelector('.file-name').textContent = file.filename;
+
+        // Thumbnail
+        const thumbnailImage = fileItem.querySelector('.thumbnail-image');
+        const thumbnailPlaceholder = fileItem.querySelector('.thumbnail-placeholder');
+        
+        if (file.thumbnail) {
+            thumbnailImage.src = file.thumbnail;
+            thumbnailImage.style.display = 'block';
+            thumbnailPlaceholder.style.display = 'none';
+        } else {
+            thumbnailImage.style.display = 'none';
+            thumbnailPlaceholder.style.display = 'flex';
+        }
+
+        // File metadata
+        fileItem.querySelector('.file-size').textContent = this.formatFileSize(file.file_size);
+        fileItem.querySelector('.file-date').textContent = this.formatDate(file.upload_time);
+
+        // Optional metadata
+        if (file.metadata.estimated_time) {
+            const timeRow = fileItem.querySelector('.estimated-time');
+            timeRow.style.display = 'flex';
+            timeRow.querySelector('.file-estimated-time').textContent = file.metadata.estimated_time;
+        }
+
+        if (file.metadata.layer_height) {
+            const layerRow = fileItem.querySelector('.layer-height');
+            layerRow.style.display = 'flex';
+            layerRow.querySelector('.file-layer-height').textContent = `${file.metadata.layer_height}mm`;
+        }
+
+        if (file.metadata.infill) {
+            const infillRow = fileItem.querySelector('.infill');
+            infillRow.style.display = 'flex';
+            infillRow.querySelector('.file-infill').textContent = `${(parseFloat(file.metadata.infill) * 100).toFixed(0)}%`;
+        }
+
+        if (file.metadata.filament_used) {
+            const filamentRow = fileItem.querySelector('.filament-used');
+            filamentRow.style.display = 'flex';
+            filamentRow.querySelector('.file-filament-used').textContent = file.metadata.filament_used;
+        }
+
+        if (file.metadata.nozzle_temp || file.metadata.bed_temp) {
+            const tempRow = fileItem.querySelector('.temperatures');
+            tempRow.style.display = 'flex';
+            const temps = [];
+            if (file.metadata.nozzle_temp) temps.push(`E: ${file.metadata.nozzle_temp}°C`);
+            if (file.metadata.bed_temp) temps.push(`B: ${file.metadata.bed_temp}°C`);
+            tempRow.querySelector('.file-temperatures').textContent = temps.join(', ');
+        }
+
+        return fileItem;
+    }
+
+    async handleFileSelect(event) {
+        const files = Array.from(event.target.files);
+        
+        if (files.length === 0) return;
+
+        // Validate files
+        const validFiles = files.filter(file => {
+            if (!file.name.toLowerCase().endsWith('.gcode')) {
+                this.showNotification(`${file.name} is not a G-code file`, 'warning');
+                return false;
+            }
+            return true;
+        });
+
+        if (validFiles.length === 0) return;
+
+        // Upload files one by one
+        for (const file of validFiles) {
+            await this.uploadFile(file);
+        }
+
+        // Clear the input
+        event.target.value = '';
+    }
+
+    async uploadFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            this.showUploadProgress(0);
+            
+            const response = await fetch('/api/files/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Upload failed');
+            }
+
+            const result = await response.json();
+            this.showNotification(`${file.name} uploaded successfully`, 'success');
+            
+            // Reload files list
+            await this.loadFiles();
+
+        } catch (error) {
+            console.error('Upload error:', error);
+            this.showNotification(`Upload failed: ${error.message}`, 'error');
+        } finally {
+            this.hideUploadProgress();
+        }
+    }
+
+    showUploadProgress(progress) {
+        const uploadProgress = document.getElementById('upload-progress');
+        const uploadContent = document.querySelector('.upload-content');
+        const progressFill = document.getElementById('upload-progress-fill');
+        const progressText = document.getElementById('upload-progress-text');
+
+        uploadContent.style.display = 'none';
+        uploadProgress.style.display = 'block';
+        progressFill.style.width = `${progress}%`;
+        progressText.textContent = progress < 100 ? 'Uploading...' : 'Processing...';
+    }
+
+    hideUploadProgress() {
+        setTimeout(() => {
+            const uploadProgress = document.getElementById('upload-progress');
+            const uploadContent = document.querySelector('.upload-content');
+            
+            uploadProgress.style.display = 'none';
+            uploadContent.style.display = 'block';
+        }, 1000);
+    }
+
+    async deleteFile(fileId) {
+        if (!confirm('Are you sure you want to delete this file?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/files/${fileId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Delete failed');
+            }
+
+            this.showNotification('File deleted successfully', 'success');
+            await this.loadFiles();
+
+        } catch (error) {
+            console.error('Delete error:', error);
+            this.showNotification(`Delete failed: ${error.message}`, 'error');
+        }
+    }
+
+    downloadFile(fileId) {
+        const file = this.files.find(f => f.id === fileId);
+        if (!file) return;
+
+        const link = document.createElement('a');
+        link.href = `/api/files/${fileId}/download`;
+        link.download = file.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    showSendFileModal(fileId, printerName) {
+        const file = this.files.find(f => f.id === fileId);
+        if (!file) return;
+
+        document.getElementById('send-file-name').textContent = file.filename;
+        document.getElementById('send-printer-name').textContent = printerName;
+        
+        this.pendingSend = { fileId, printerName, filename: file.filename };
+        document.getElementById('send-file-modal').style.display = 'flex';
+    }
+
+    hideSendFileModal() {
+        document.getElementById('send-file-modal').style.display = 'none';
+        this.pendingSend = null;
+    }
+
+    async confirmSendFile() {
+        if (!this.pendingSend) return;
+
+        const { fileId, printerName, filename } = this.pendingSend;
+
+        try {
+            const response = await fetch(`/api/files/${fileId}/send`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    printer_name: printerName
+                })
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Send failed');
+            }
+
+            const result = await response.json();
+            this.showNotification(`${filename} sent to ${printerName}`, 'success');
+            this.hideSendFileModal();
+
+        } catch (error) {
+            console.error('Send error:', error);
+            this.showNotification(`Send failed: ${error.message}`, 'error');
+        }
+    }
+
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
+    }
+
+    showNotification(message, type = 'info') {
+        // Use the dashboard's notification system if available
+        if (window.printFarmDashboard && window.printFarmDashboard.showNotification) {
+            window.printFarmDashboard.showNotification(message, type);
+        } else {
+            // Fallback to alert
+            alert(message);
+        }
+    }
+}
+
 // Initialize the dashboard when the page loads
 document.addEventListener('DOMContentLoaded', () => {
     window.printFarmDashboard = new PrintFarmDashboard();
+    window.fileManager = new FileManager();
 });
 
 // Handle page visibility changes to pause/resume updates
