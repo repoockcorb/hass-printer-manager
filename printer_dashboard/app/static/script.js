@@ -537,12 +537,25 @@ class PrintFarmDashboard {
     
     async controlPrinter(printerName, action) {
         try {
-            const response = await fetch(`api/control/${printerName}/${action}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
+            let response;
+            const directInfo=this.getDirectControlInfo(printerName);
+
+            if(directInfo){
+                // use direct Moonraker control
+                console.log(`🔀 Using direct control for ${printerName} ${action}`);
+                const url=`api/direct-control/${directInfo.host}/${directInfo.port}/${action}`;
+                const body={};
+                if(directInfo.api_key) body.api_key=directInfo.api_key;
+                response=await fetch(url,{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+            }else{
+                // regular routed API
+                response = await fetch(`api/control/${printerName}/${action}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+            }
             
             const result = await response.json();
             
