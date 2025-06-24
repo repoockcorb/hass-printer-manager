@@ -16,6 +16,7 @@ RUN mkdir -p /app
 
 # Copy application files
 COPY app/ /app/
+COPY requirements.txt /app/
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY run.sh /
 RUN chmod a+x /run.sh

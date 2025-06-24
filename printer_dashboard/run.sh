@@ -21,6 +21,7 @@ mkdir -p /data
 # Function to handle shutdown gracefully
 shutdown() {
     echo "[INFO] Shutting down services..."
+    pkill -f "python app.py" || true
     pkill -f "python3 app.py" || true
     pkill nginx || true
     exit 0
@@ -46,14 +47,30 @@ export PORT=5001
 mkdir -p /data/gcode_files
 chmod 755 /data/gcode_files
 
+# Change to the app directory (where files are located)
+cd /app
+echo "[INFO] Current directory: $(pwd)"
+echo "[INFO] Files in directory: $(ls -la)"
+
 # Install Python dependencies
 echo "[INFO] Installing dependencies..."
-pip install --no-cache-dir -r requirements.txt
+if [ -f "requirements.txt" ]; then
+    pip install --no-cache-dir -r requirements.txt
+else
+    echo "[ERROR] requirements.txt not found in $(pwd)"
+    echo "[INFO] Available files: $(ls -la)"
+    exit 1
+fi
 
 # Start the Flask application
 echo "[INFO] Starting Print Farm Dashboard backend..."
 cd app
+echo "[INFO] App directory contents: $(ls -la)"
+echo "[INFO] Starting Flask app..."
 python app.py &
+FLASK_PID=$!
+echo "[INFO] Flask app started with PID: $FLASK_PID"
 
 # Wait for background processes
+echo "[INFO] Waiting for services..."
 wait 
