@@ -9,6 +9,7 @@ const DIRECT_CONTROL_CONFIG = {
 
 // Determine Home Assistant ingress base (if any)
 const API_BASE = (() => {
+    if (window.API_BASE) return window.API_BASE; // injected by template
     const match = window.location.pathname.match(/\/api\/hassio_ingress\/[^/]+\//);
     return match ? match[0] : '/';
 })();
