@@ -1622,4 +1622,27 @@ window.addEventListener('beforeunload', () => {
     if (window.printFarmDashboard) {
         window.printFarmDashboard.stopAutoUpdate();
     }
-}); 
+});
+
+// -----------------------------------------------------------------------------
+// Ensure trailing slash for Home Assistant ingress URLs
+// When the dashboard is accessed through /api/hassio_ingress/<slug> without the
+// trailing "/", making a relative request like "api/files" will drop the slug
+// and hit the wrong endpoint.  We detect that situation early and reload the
+// page with the trailing slash so that all subsequent relative paths resolve
+// correctly, both locally and via Nabu Casa remote access.
+// -----------------------------------------------------------------------------
+(function ensureIngressTrailingSlash() {
+    try {
+        const { pathname, search, hash } = window.location;
+        const ingressMatch = pathname.match(/\/api\/hassio_ingress\/[^/]+$/);
+        if (ingressMatch && !pathname.endsWith('/')) {
+            const newUrl = pathname + '/' + (search || '') + (hash || '');
+            // Use replace so we don't pollute the browser history
+            window.location.replace(newUrl);
+        }
+    } catch (e) {
+        // Fail silently; better to continue loading than crash the script
+        console.warn('Ingress trailing slash check failed:', e);
+    }
+})(); 
