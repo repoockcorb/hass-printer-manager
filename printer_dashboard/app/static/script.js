@@ -7,6 +7,18 @@ const DIRECT_CONTROL_CONFIG = {
     debugLogging: true
 };
 
+// Determine Home Assistant ingress base (if any)
+const API_BASE = (() => {
+    const match = window.location.pathname.match(/\/api\/hassio_ingress\/[^/]+\//);
+    return match ? match[0] : '/';
+})();
+
+function apiUrl(path) {
+    // ensure no leading slash on path
+    if (path.startsWith('/')) path = path.slice(1);
+    return `${API_BASE}${path}`;
+}
+
 class PrintFarmDashboard {
     constructor() {
         this.printers = new Map();
@@ -145,7 +157,7 @@ class PrintFarmDashboard {
     
     async loadPrinters() {
         try {
-            const response = await fetch('api/printers');
+            const response = await fetch(apiUrl('api/printers'));
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -191,7 +203,7 @@ class PrintFarmDashboard {
         this.setRefreshButtonState(true);
         
         try {
-            const response = await fetch('api/status');
+            const response = await fetch(apiUrl('api/status'));
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -476,7 +488,7 @@ class PrintFarmDashboard {
     
     async controlPrinter(printerName, action) {
         try {
-            const response = await fetch(`api/control/${printerName}/${action}`, {
+            const response = await fetch(apiUrl(`api/control/${printerName}/${action}`), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -732,7 +744,7 @@ class PrintFarmDashboard {
             
             // Strategy 5: For mobile app or complex scenarios, ask the backend for help
             try {
-                const haInfoResponse = await fetch('api/ha-info');
+                const haInfoResponse = await fetch(apiUrl('api/ha-info'));
                 if (haInfoResponse.ok) {
                     const haInfo = await haInfoResponse.json();
                     console.log('HA Info from backend:', haInfo);
@@ -784,7 +796,7 @@ class PrintFarmDashboard {
             
             // Get fresh snapshot URL with dynamic base_url
             const timestamp = Date.now();
-            const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot?base_url=${encodeURIComponent(baseUrl)}&_=${timestamp}`);
+            const snapshotResponse = await fetch(apiUrl(`api/camera/${this.currentCameraPrinter}/snapshot?base_url=${encodeURIComponent(baseUrl)}&_=${timestamp}`));
             
             if (!snapshotResponse.ok) {
                 throw new Error(`API request failed: ${snapshotResponse.status} ${snapshotResponse.statusText}`);
@@ -995,7 +1007,7 @@ class PrintFarmDashboard {
                 
                 console.log(`Homing ${this.currentMovementPrinter} via direct API: ${axes || 'all axes'}`);
                 
-                response = await fetch(`api/direct-control/${directInfo.host}/${directInfo.port}/home`, {
+                response = await fetch(apiUrl(`api/direct-control/${directInfo.host}/${directInfo.port}/home`), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1012,7 +1024,7 @@ class PrintFarmDashboard {
                 
                 console.log(`Homing ${this.currentMovementPrinter}: ${axes || 'all axes'}`);
                 
-                response = await fetch(`api/control/${this.currentMovementPrinter}/home`, {
+                response = await fetch(apiUrl(`api/control/${this.currentMovementPrinter}/home`), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1075,7 +1087,7 @@ class PrintFarmDashboard {
                 
                 console.log(`Jogging ${this.currentMovementPrinter} via direct API: ${axis}${distance > 0 ? '+' : ''}${distance}mm`);
                 
-                response = await fetch(`api/direct-control/${directInfo.host}/${directInfo.port}/jog`, {
+                response = await fetch(apiUrl(`api/direct-control/${directInfo.host}/${directInfo.port}/jog`), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1087,7 +1099,7 @@ class PrintFarmDashboard {
                 console.log(`📡 Using regular API for ${this.currentMovementPrinter} jog command`);
                 console.log(`Jogging ${this.currentMovementPrinter}: ${axis}${distance > 0 ? '+' : ''}${distance}mm`);
                 
-                response = await fetch(`api/control/${this.currentMovementPrinter}/jog`, {
+                response = await fetch(apiUrl(`api/control/${this.currentMovementPrinter}/jog`), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -1247,7 +1259,7 @@ class FileManager {
 
     async loadFiles() {
         try {
-            const response = await fetch('api/files');
+            const response = await fetch(apiUrl('api/files'));
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -1262,7 +1274,7 @@ class FileManager {
 
     async loadPrinters() {
         try {
-            const response = await fetch('api/printers');
+            const response = await fetch(apiUrl('api/printers'));
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -1415,7 +1427,7 @@ class FileManager {
         try {
             this.showUploadProgress(0);
             
-            const response = await fetch('api/files/upload', {
+            const response = await fetch(apiUrl('api/files/upload'), {
                 method: 'POST',
                 body: formData
             });
@@ -1467,7 +1479,7 @@ class FileManager {
         }
 
         try {
-            const response = await fetch(`api/files/${fileId}`, {
+            const response = await fetch(apiUrl(`api/files/${fileId}`), {
                 method: 'DELETE'
             });
 
@@ -1490,7 +1502,7 @@ class FileManager {
         if (!file) return;
 
         const link = document.createElement('a');
-        link.href = `api/files/${fileId}/download`;
+        link.href = apiUrl(`api/files/${fileId}/download`);
         link.download = file.filename;
         document.body.appendChild(link);
         link.click();
@@ -1519,7 +1531,7 @@ class FileManager {
         const { fileId, printerName, filename } = this.pendingSend;
 
         try {
-            const response = await fetch(`api/files/${fileId}/send`, {
+            const response = await fetch(apiUrl(`api/files/${fileId}/send`), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
