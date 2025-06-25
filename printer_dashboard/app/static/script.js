@@ -514,15 +514,43 @@ class PrintFarmDashboard {
         const cancelBtn = card.querySelector('.cancel-btn');
         const reprintBtn = card.querySelector('.reprint-btn');
         const moveBtn = card.querySelector('.movement-btn');
-        
-        const isPrinting = status.online && ['printing'].includes(status.state.toLowerCase());
-        const isPaused = status.online && ['paused'].includes(status.state.toLowerCase());
-        const hasActiveJob = status.file && status.progress > 0;
-        
-        pauseBtn.style.display = hasActiveJob ? 'inline-flex' : 'none';
-        resumeBtn.style.display = status.state === 'complete' || status.state === 'finished' ? 'inline-flex' : 'none';
-        cancelBtn.style.display = hasActiveJob ? 'inline-flex' : 'none';
-        reprintBtn.style.display = status.state === 'complete' || status.state === 'finished' ? 'inline-flex' : 'none';
+
+        // Track the current print file if printing
+        if (status.file) {
+            this.lastPrintFile.set(printerName, status.file);
+        }
+
+        // Hide all buttons first
+        pauseBtn.style.display = 'none';
+        resumeBtn.style.display = 'none';
+        cancelBtn.style.display = 'none';
+        reprintBtn.style.display = 'none';
+        moveBtn.style.display = 'none';
+
+        // Show buttons based on machine state
+        const state = status.state.toLowerCase();
+        switch (state) {
+            case 'idle':
+            case 'standby':
+                moveBtn.style.display = 'inline-flex';
+                break;
+            
+            case 'printing':
+                pauseBtn.style.display = 'inline-flex';
+                cancelBtn.style.display = 'inline-flex';
+                break;
+            
+            case 'paused':
+                resumeBtn.style.display = 'inline-flex';
+                cancelBtn.style.display = 'inline-flex';
+                break;
+            
+            case 'complete':
+            case 'finished':
+                reprintBtn.style.display = 'inline-flex';
+                moveBtn.style.display = 'inline-flex';
+                break;
+        }
         moveBtn.style.display = isPrinting || isPaused ? 'inline-flex' : 'none';
         
         // Update last update time
