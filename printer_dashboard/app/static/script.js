@@ -509,14 +509,18 @@ class PrintFarmDashboard {
         }
         
         // Update control buttons visibility
-        const cancelBtn = card.querySelector('.cancel-print');
-        const reprintBtn = card.querySelector('.reprint');
-        const moveBtn = card.querySelector('.move-print');
+        const pauseBtn = card.querySelector('.pause-btn');
+        const resumeBtn = card.querySelector('.resume-btn');
+        const cancelBtn = card.querySelector('.cancel-btn');
+        const reprintBtn = card.querySelector('.reprint-btn');
+        const moveBtn = card.querySelector('.movement-btn');
         
         const isPrinting = status.online && ['printing'].includes(status.state.toLowerCase());
         const isPaused = status.online && ['paused'].includes(status.state.toLowerCase());
         const hasActiveJob = status.file && status.progress > 0;
         
+        pauseBtn.style.display = hasActiveJob ? 'inline-flex' : 'none';
+        resumeBtn.style.display = status.state === 'complete' || status.state === 'finished' ? 'inline-flex' : 'none';
         cancelBtn.style.display = hasActiveJob ? 'inline-flex' : 'none';
         reprintBtn.style.display = status.state === 'complete' || status.state === 'finished' ? 'inline-flex' : 'none';
         moveBtn.style.display = isPrinting || isPaused ? 'inline-flex' : 'none';
