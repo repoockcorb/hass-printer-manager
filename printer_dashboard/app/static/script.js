@@ -40,6 +40,7 @@ class PrintFarmDashboard {
         this.printPrinter = document.getElementById('print-printer');
 
         this.currentPrintFile = null;
+        this.lastPrintFile = new Map(); // Track last printed file for each printer
 
         this.init();
         this.setupThumbnailModal();
@@ -508,22 +509,27 @@ class PrintFarmDashboard {
         }
         
         // Update control buttons visibility
-        const pauseBtn = card.querySelector('.pause-btn');
-        const resumeBtn = card.querySelector('.resume-btn');
-        const cancelBtn = card.querySelector('.cancel-btn');
+        const cancelBtn = card.querySelector('.cancel-print');
+        const reprintBtn = card.querySelector('.reprint');
+        const moveBtn = card.querySelector('.move-print');
         
         const isPrinting = status.online && ['printing'].includes(status.state.toLowerCase());
         const isPaused = status.online && ['paused'].includes(status.state.toLowerCase());
         const hasActiveJob = status.file && status.progress > 0;
         
-        pauseBtn.style.display = isPrinting ? 'inline-flex' : 'none';
-        resumeBtn.style.display = isPaused ? 'inline-flex' : 'none';
         cancelBtn.style.display = hasActiveJob ? 'inline-flex' : 'none';
+        reprintBtn.style.display = status.state === 'complete' || status.state === 'finished' ? 'inline-flex' : 'none';
+        moveBtn.style.display = isPrinting || isPaused ? 'inline-flex' : 'none';
         
         // Update last update time
         const updateTime = card.querySelector('.update-time');
         if (printer.lastUpdate) {
             updateTime.textContent = this.formatRelativeTime(printer.lastUpdate);
+        }
+
+        // Track the current print file if printing
+        if (status.file) {
+            this.lastPrintFile.set(printerName, status.file);
         }
     }
     

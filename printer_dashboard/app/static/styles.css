@@ -1531,4 +1531,42 @@ body {
     max-height: 300px;
     object-fit: contain;
     width: 100%;
+}
+
+.printer-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
+.printer-actions button {
+    padding: 0.5rem 1rem;
+    min-width: 100px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.printer-actions .last-update {
+    margin-left: auto;
+    color: #94a3b8;
+    font-size: 0.875rem;
+}
+
+/* Responsive styles */
+@media (max-width: 640px) {
+    .printer-actions {
+        flex-wrap: wrap;
+    }
+    
+    .printer-actions button {
+        flex: 1;
+    }
+
+    .printer-actions .last-update {
+        width: 100%;
+        margin-top: 0.5rem;
+        text-align: right;
+    }
 } 
