@@ -426,7 +426,7 @@ class PrintFarmDashboard {
     }
     
     updatePrinterCard(printerName, status) {
-        const card = document.querySelector(`[data-printer="${printerName}"]`);
+        const card = document.querySelector(`[data-printer-name="${printerName}"]`);
         if (!card) return;
 
         // Update status text and color
