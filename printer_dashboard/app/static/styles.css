@@ -1265,41 +1265,99 @@ body {
 
 .upload-modal-content {
     max-width: 600px;
+    width: 90%;
 }
 
 #file-list-container {
-    border: 1px solid rgba(148,163,184,0.15);
+    max-height: 250px;
+    overflow-y: auto;
+    padding: 1rem;
+    background: rgba(30, 41, 59, 0.5);
     border-radius: 8px;
-    background: rgba(30,41,59,0.5);
+    margin: 1rem 0;
 }
 
 .file-row {
-    padding: 0.5rem 0.75rem;
+    padding: 0.75rem;
+    border-radius: 6px;
+    background: rgba(30, 41, 59, 0.3);
+    margin-bottom: 0.5rem;
+    transition: background-color 0.2s ease;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    border-bottom: 1px solid rgba(148,163,184,0.08);
-    transition: background 0.2s;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
-.file-row:last-child {
-    border-bottom: none;
+.file-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 200px;
+    gap: 0.5rem;
 }
 
-.file-row:hover {
-    background: rgba(71,85,105,0.3);
-}
-
-.file-row span {
+.file-name {
+    flex: 1;
     overflow: hidden;
-    white-space: nowrap;
     text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.btn-send-file {
-    padding: 0.4rem 0.85rem;
-    font-size: 0.75rem;
+.file-size {
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+.file-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* Responsive styles */
+@media (max-width: 640px) {
+    .file-row {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 1rem;
+    }
+
+    .file-info {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+
+    .file-actions {
+        display: flex;
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 0.5rem;
+    }
+
+    .file-actions button {
+        width: 120px;
+        justify-content: center;
+        padding: 0.75rem;
+    }
+}
+
+/* Add custom scrollbar styling */
+#file-list-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+#file-list-container::-webkit-scrollbar-track {
+    background: rgba(30, 41, 59, 0.2);
+    border-radius: 4px;
+}
+
+#file-list-container::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.3);
+    border-radius: 4px;
+}
+
+#file-list-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.4);
 }
 
 /* Drop zone */
@@ -1434,4 +1492,43 @@ body {
     --error-color: #ef4444;
     --success-color: #22c55e;
     --warning-color: #f59e0b;
+}
+
+.print-preview {
+    background: rgba(30, 41, 59, 0.5);
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.print-details {
+    margin-top: 1rem;
+}
+
+.print-details p {
+    margin: 0.5rem 0;
+    color: #94a3b8;
+}
+
+#print-confirm-modal .modal-content {
+    max-width: 500px;
+    width: 90%;
+}
+
+#print-confirm-modal .modal-footer {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+#print-confirm-modal .modal-footer button {
+    width: 120px;
+    justify-content: center;
+    padding: 0.75rem;
+}
+
+#print-thumbnail {
+    max-height: 300px;
+    object-fit: contain;
+    width: 100%;
 } 
