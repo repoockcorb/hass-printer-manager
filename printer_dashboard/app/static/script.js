@@ -41,6 +41,8 @@ class PrintFarmDashboard {
 
         this.currentPrintFile = null;
 
+        this.lastCompletedPrints = new Map(); // Store last completed print for each printer
+
         this.init();
         this.setupThumbnailModal();
     }
@@ -364,7 +366,7 @@ class PrintFarmDashboard {
                 if (statusData[printerName]) {
                     printer.status = statusData[printerName];
                     printer.lastUpdate = new Date();
-                    this.updatePrinterCard(printerName, printer);
+                    this.updatePrinterCard(printerName, printer.status);
                 }
             }
             
@@ -423,108 +425,104 @@ class PrintFarmDashboard {
         }
     }
     
-    updatePrinterCard(printerName, printer) {
-        const card = document.querySelector(`[data-printer-name="${printerName}"]`);
-        if (!card || !printer.status) return;
+    updatePrinterCard(printerName, status) {
+        const card = document.querySelector(`[data-printer="${printerName}"]`);
+        if (!card) return;
+
+        // Update status text and color
+        const statusEl = card.querySelector('.printer-status');
+        const statusText = this.formatStatusText(status);
+        statusEl.textContent = statusText;
         
-        const status = printer.status;
+        // Remove all status classes
+        statusEl.classList.remove('status-printing', 'status-ready', 'status-error', 'status-offline');
         
-        // Update status indicator and text
-        const statusIndicator = card.querySelector('.status-indicator');
-        const statusText = card.querySelector('.status-text');
-        
-        // Remove existing status classes
-        statusIndicator.className = 'status-indicator';
-        card.className = card.className.replace(/\s*(offline|printing|paused|error)\s*/g, ' ').trim();
-        
-        if (!status.online) {
-            statusIndicator.classList.add('offline');
-            card.classList.add('offline');
-            statusText.textContent = 'Offline';
-        } else {
-            const state = status.state.toLowerCase();
-            statusText.textContent = this.formatStatusText(state);
-            
-            if (['printing'].includes(state)) {
-                statusIndicator.classList.add('printing');
-                card.classList.add('printing');
-            } else if (['paused'].includes(state)) {
-                statusIndicator.classList.add('paused');
-                card.classList.add('paused');
-            } else if (['error'].includes(state)) {
-                statusIndicator.classList.add('offline');
-                card.classList.add('error');
+        // Add appropriate status class
+        if (status.online) {
+            if (status.state.toLowerCase() === 'printing') {
+                statusEl.classList.add('status-printing');
+            } else if (status.state.toLowerCase() === 'ready') {
+                statusEl.classList.add('status-ready');
             } else {
-                statusIndicator.classList.add('online');
+                statusEl.classList.add('status-error');
+            }
+        } else {
+            statusEl.classList.add('status-offline');
+        }
+
+        // Handle printer status and buttons
+        const cancelBtn = card.querySelector('.cancel-btn');
+        const clearBtn = card.querySelector('.clear-print');
+        const reprintBtn = card.querySelector('.reprint');
+        const moveBtn = card.querySelector('.move-button');
+
+        // Hide all buttons by default
+        cancelBtn.style.display = 'none';
+        clearBtn.style.display = 'none';
+        reprintBtn.style.display = 'none';
+        moveBtn.style.display = 'none';
+
+        // Update button visibility based on status
+        if (status.online) {
+            const state = status.state.toLowerCase();
+            if (state === 'printing') {
+                cancelBtn.style.display = 'flex';
+                moveBtn.style.display = 'flex';
+                // Store the current file for potential reprint later
+                this.lastCompletedPrints.set(printerName, status.file);
+            } else if (state === 'complete' || state === 'finished') {
+                clearBtn.style.display = 'flex';
+                reprintBtn.style.display = 'flex';
+                moveBtn.style.display = 'flex';
+            } else if (state === 'ready') {
+                moveBtn.style.display = 'flex';
             }
         }
-        
-        // Update file name and progress
-        const fileName = card.querySelector('.file-name');
-        const progressFill = card.querySelector('.progress-fill');
-        const progressText = card.querySelector('.progress-text');
-        
-        if (status.file) {
-            fileName.textContent = status.file;
-            const progVal = (status.progress !== undefined && status.progress !== null) ? status.progress : 0;
-            progressFill.style.width = `${progVal}%`;
-            progressText.textContent = `${progVal}%`;
 
-            // Show thumbnail button
-            const thumbBtn = card.querySelector('.thumb-btn');
-            if (thumbBtn) thumbBtn.style.display = 'inline-flex';
-        } else {
-            fileName.textContent = 'No active print';
-            progressFill.style.width = '0%';
-            progressText.textContent = '0%';
-
-            // Show thumbnail button
-            const thumbBtn = card.querySelector('.thumb-btn');
-            if (thumbBtn) thumbBtn.style.display = 'none';
-        }
-        
-        // Update temperatures
-        if (status.extruder_temp) {
-            card.querySelector('.temp-actual').textContent = `${status.extruder_temp.actual}°`;
-            card.querySelector('.temp-target').textContent = `${status.extruder_temp.target}°`;
-        }
-        
-        if (status.bed_temp) {
-            const bedActual = card.querySelectorAll('.temp-actual')[1];
-            const bedTarget = card.querySelectorAll('.temp-target')[1];
-            if (bedActual) bedActual.textContent = `${status.bed_temp.actual}°`;
-            if (bedTarget) bedTarget.textContent = `${status.bed_temp.target}°`;
-        }
-        
-        // Update times
-        card.querySelector('.print-time').textContent = status.print_time || '00:00:00';
-        card.querySelector('.remaining-time').textContent = status.remaining_time || '00:00:00';
-        
-        // Update positions
-        if (status.position) {
-            card.querySelector('.x-pos').textContent = status.position.x || '0.00';
-            card.querySelector('.y-pos').textContent = status.position.y || '0.00';
-            card.querySelector('.z-pos').textContent = status.position.z || '0.00';
-        }
-        
-        // Update control buttons visibility
-        const pauseBtn = card.querySelector('.pause-btn');
-        const resumeBtn = card.querySelector('.resume-btn');
-        const cancelBtn = card.querySelector('.cancel-btn');
-        
-        const isPrinting = status.online && ['printing'].includes(status.state.toLowerCase());
-        const isPaused = status.online && ['paused'].includes(status.state.toLowerCase());
-        const hasActiveJob = status.file && status.progress > 0;
-        
-        pauseBtn.style.display = isPrinting ? 'inline-flex' : 'none';
-        resumeBtn.style.display = isPaused ? 'inline-flex' : 'none';
-        cancelBtn.style.display = hasActiveJob ? 'inline-flex' : 'none';
+        // Update button event listeners
+        this.updateButtonListeners(card, printerName, status);
         
         // Update last update time
         const updateTime = card.querySelector('.update-time');
         if (printer.lastUpdate) {
             updateTime.textContent = this.formatRelativeTime(printer.lastUpdate);
         }
+    }
+    
+    updateButtonListeners(card, printer, data) {
+        const cancelBtn = card.querySelector('.cancel-btn');
+        const clearBtn = card.querySelector('.clear-print');
+        const reprintBtn = card.querySelector('.reprint');
+        const moveBtn = card.querySelector('.move-button');
+
+        // Remove existing listeners
+        cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+        clearBtn.replaceWith(clearBtn.cloneNode(true));
+        reprintBtn.replaceWith(reprintBtn.cloneNode(true));
+        moveBtn.replaceWith(moveBtn.cloneNode(true));
+
+        // Get fresh references after cloning
+        const newCancelBtn = card.querySelector('.cancel-btn');
+        const newClearBtn = card.querySelector('.clear-print');
+        const newReprintBtn = card.querySelector('.reprint');
+        const newMoveBtn = card.querySelector('.move-button');
+
+        // Add new listeners
+        newCancelBtn.addEventListener('click', () => this.cancelPrint(printer));
+        newClearBtn.addEventListener('click', () => this.clearPrint(printer));
+        newReprintBtn.addEventListener('click', () => this.reprintLastFile(printer));
+        newMoveBtn.addEventListener('click', () => this.openMoveModal(printer));
+    }
+    
+    async reprintLastFile(printer) {
+        const lastFile = this.lastCompletedPrints.get(printer);
+        if (!lastFile) {
+            this.showNotification('No previous print found', 'error');
+            return;
+        }
+
+        // Show confirmation modal with thumbnail
+        await this.showPrintConfirmation(lastFile, printer);
     }
     
     updateSummary() {
@@ -1773,6 +1771,25 @@ class PrintFarmDashboard {
         document.getElementById('printing-count').textContent = printing;
         document.getElementById('idle-count').textContent = idle;
         document.getElementById('error-count').textContent = error;
+    }
+
+    async clearPrint(printer) {
+        try {
+            const response = await fetch('api/printer/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ printer })
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to clear print');
+            }
+
+            this.showNotification(`Print cleared from ${printer}`, 'success');
+        } catch (error) {
+            this.showNotification(`Failed to clear print: ${error.message}`, 'error');
+        }
     }
 }
 
