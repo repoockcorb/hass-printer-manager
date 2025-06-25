@@ -1,6 +1,6 @@
 name: "Print Farm Dashboard"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "4.2.68"
+version: "4.2.69"
 slug: "printer_dashboard"
 init: false
 arch:

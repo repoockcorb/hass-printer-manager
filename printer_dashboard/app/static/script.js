@@ -28,6 +28,18 @@ class PrintFarmDashboard {
         this.uploadConfirmBtn = document.getElementById('upload-confirm');
         this.gcodeFileInput = document.getElementById('gcode-file-input');
         this.printerSelect = document.getElementById('printer-select');
+        this.selectedFiles = []; // Add this line to store selected files
+
+        // Print confirmation modal elements
+        this.printConfirmModal = document.getElementById('print-confirm-modal');
+        this.printConfirmClose = document.getElementById('print-confirm-close');
+        this.printCancel = document.getElementById('print-cancel');
+        this.printConfirm = document.getElementById('print-confirm');
+        this.printThumbnail = document.getElementById('print-thumbnail');
+        this.printFilename = document.getElementById('print-filename');
+        this.printPrinter = document.getElementById('print-printer');
+
+        this.currentPrintFile = null;
 
         this.init();
         this.setupThumbnailModal();
@@ -1357,6 +1369,7 @@ class PrintFarmDashboard {
     /* =================== Upload Modal =================== */
     showUploadModal() {
         if (!this.uploadModal) return;
+        this.selectedFiles = []; // Clear selected files when opening modal
         this.populatePrinterSelect();
         this.loadFileList();
         this.uploadModal.style.display = 'flex';
@@ -1365,8 +1378,9 @@ class PrintFarmDashboard {
     hideUploadModal() {
         if (!this.uploadModal) return;
         this.uploadModal.style.display = 'none';
-        // Reset form
+        // Reset form and selected files
         if (this.gcodeFileInput) this.gcodeFileInput.value = '';
+        this.selectedFiles = [];
         document.getElementById('upload-progress').style.display = 'none';
         document.getElementById('upload-error').style.display = 'none';
     }
@@ -1383,36 +1397,42 @@ class PrintFarmDashboard {
     }
 
     async uploadAndSendGcode() {
-        const file = this.gcodeFileInput.files[0];
-        const printer = this.printerSelect.value;
         const progressEl = document.getElementById('upload-progress');
         const errorEl = document.getElementById('upload-error');
-        if (!file) {
-            errorEl.textContent = 'Please select a file';
+        
+        if (this.selectedFiles.length === 0) {
+            errorEl.textContent = 'Please select files to upload';
             errorEl.style.display = 'block';
             return;
         }
+
         errorEl.style.display = 'none';
         progressEl.style.display = 'block';
 
         try {
-            // 1. Upload file to server
-            const formData = new FormData();
-            formData.append('file', file);
-            const uploadResp = await fetch('api/gcode/upload', { method: 'POST', body: formData });
-            const uploadResJson = await uploadResp.json();
-            if (!uploadResp.ok || !uploadResJson.success) {
-                throw new Error(uploadResJson.error || 'Upload failed');
+            for (const file of this.selectedFiles) {
+                progressEl.textContent = `Uploading ${file.name}...`;
+                // Upload file to server
+                const formData = new FormData();
+                formData.append('file', file);
+                const uploadResp = await fetch('api/gcode/upload', { method: 'POST', body: formData });
+                const uploadResJson = await uploadResp.json();
+                if (!uploadResp.ok || !uploadResJson.success) {
+                    throw new Error(uploadResJson.error || 'Upload failed');
+                }
+                this.showNotification(`File "${uploadResJson.file}" uploaded`, 'success');
             }
 
-            this.showNotification(`File "${uploadResJson.file}" uploaded`, 'success');
-            // Clear file input and refresh list
+            // Clear selected files and refresh list
+            this.selectedFiles = [];
             if (this.gcodeFileInput) this.gcodeFileInput.value = '';
             this.loadFileList();
+            
         } catch (err) {
             console.error('Upload error', err);
             errorEl.textContent = err.message;
             errorEl.style.display = 'block';
+        } finally {
             progressEl.style.display = 'none';
         }
     }
@@ -1433,40 +1453,52 @@ class PrintFarmDashboard {
             files.forEach(f => {
                 const row = document.createElement('div');
                 row.className = 'file-row';
-                row.style.display = 'flex';
-                row.style.alignItems = 'center';
-                row.style.justifyContent = 'space-between';
-                row.style.padding = '0.25rem 0';
+
+                // File info section (left side)
+                const fileInfo = document.createElement('div');
+                fileInfo.className = 'file-info';
 
                 const thumb = document.createElement('img');
                 thumb.className = 'file-thumb';
                 thumb.src = `files/thumbnail?filename=${encodeURIComponent(f.name)}`;
+                thumb.style.width = '40px';
+                thumb.style.height = '40px';
+                thumb.style.objectFit = 'contain';
+                thumb.style.borderRadius = '4px';
+                thumb.style.background = 'rgba(15, 23, 42, 0.3)';
 
                 const nameEl = document.createElement('span');
+                nameEl.className = 'file-name';
                 nameEl.textContent = f.name;
-                nameEl.style.flex = '1';
                 nameEl.style.color = '#e0e6ed';
 
                 const sizeEl = document.createElement('span');
+                sizeEl.className = 'file-size';
                 sizeEl.textContent = this.formatBytes(f.size);
-                sizeEl.style.marginRight = '0.5rem';
-                sizeEl.style.color = '#94a3b8';
 
-                const sendBtn = document.createElement('button');
-                sendBtn.className = 'btn-icon btn-send-icon btn-send-file';
-                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
-                sendBtn.setAttribute('data-file', f.name);
+                fileInfo.appendChild(thumb);
+                fileInfo.appendChild(nameEl);
+                fileInfo.appendChild(sizeEl);
+
+                // Actions section (right side)
+                const actions = document.createElement('div');
+                actions.className = 'file-actions';
 
                 const delBtn = document.createElement('button');
                 delBtn.className = 'btn-icon btn-delete-icon btn-delete-file';
                 delBtn.innerHTML = '<i class="fas fa-trash"></i>';
                 delBtn.setAttribute('data-file', f.name);
 
-                row.appendChild(thumb);
-                row.appendChild(nameEl);
-                row.appendChild(sizeEl);
-                row.appendChild(delBtn);
-                row.appendChild(sendBtn);
+                const sendBtn = document.createElement('button');
+                sendBtn.className = 'btn-icon btn-send-icon btn-send-file';
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+                sendBtn.setAttribute('data-file', f.name);
+
+                actions.appendChild(delBtn);
+                actions.appendChild(sendBtn);
+
+                row.appendChild(fileInfo);
+                row.appendChild(actions);
                 container.appendChild(row);
             });
         } catch (err) {
@@ -1483,25 +1515,108 @@ class PrintFarmDashboard {
 
     async sendExistingFile(fileName) {
         const printer = this.printerSelect.value;
-        const errorEl = document.getElementById('upload-error');
-        const progressEl = document.getElementById('upload-progress');
-        errorEl.style.display = 'none';
-        progressEl.style.display = 'block';
-        progressEl.textContent = 'Sending...';
+        if (!printer) {
+            this.showNotification('Please select a printer', 'error');
+            return;
+        }
+
+        // Show confirmation modal with thumbnail
+        await this.showPrintConfirmation(fileName, printer);
+    }
+
+    async showPrintConfirmation(fileName, printerName) {
+        this.currentPrintFile = fileName;
+        
+        // Set the details
+        this.printFilename.textContent = fileName;
+        this.printPrinter.textContent = printerName;
+
+        // Load thumbnail
         try {
-            const sendResp = await fetch('api/gcode/send', {
+            const response = await fetch(`files/thumbnail?filename=${encodeURIComponent(fileName)}`);
+            if (response.ok) {
+                const blob = await response.blob();
+                this.printThumbnail.src = URL.createObjectURL(blob);
+            }
+        } catch (error) {
+            console.error('Error loading thumbnail:', error);
+            this.printThumbnail.src = ''; // Clear source on error
+        }
+
+        // Show modal
+        this.printConfirmModal.style.display = 'flex';
+
+        // Setup event listeners
+        const handleConfirm = async () => {
+            this.printConfirmModal.style.display = 'none';
+            await this.startPrint(fileName, printerName);
+            this.cleanup();
+        };
+
+        const handleCancel = () => {
+            this.printConfirmModal.style.display = 'none';
+            this.cleanup();
+        };
+
+        const cleanup = () => {
+            this.printConfirm.removeEventListener('click', handleConfirm);
+            this.printCancel.removeEventListener('click', handleCancel);
+            this.printConfirmClose.removeEventListener('click', handleCancel);
+            if (this.printThumbnail.src) {
+                URL.revokeObjectURL(this.printThumbnail.src);
+            }
+        };
+
+        this.cleanup = cleanup;
+
+        // Add event listeners
+        this.printConfirm.addEventListener('click', handleConfirm);
+        this.printCancel.addEventListener('click', handleCancel);
+        this.printConfirmClose.addEventListener('click', handleCancel);
+
+        // Close on click outside
+        this.printConfirmModal.addEventListener('click', (e) => {
+            if (e.target === this.printConfirmModal) {
+                handleCancel();
+            }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.printConfirmModal.style.display === 'flex') {
+                handleCancel();
+            }
+        });
+    }
+
+    async startPrint(fileName, printerName) {
+        const progressEl = document.getElementById('upload-progress');
+        const errorEl = document.getElementById('upload-error');
+        
+        try {
+            progressEl.style.display = 'block';
+            progressEl.textContent = 'Starting print...';
+            
+            const response = await fetch('api/gcode/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ printer, file: fileName, start: true })
+                body: JSON.stringify({
+                    printer: printerName,
+                    file: fileName,
+                    start: true
+                })
             });
-            const sendJson = await sendResp.json();
-            if (!sendResp.ok || !sendJson.success) {
-                throw new Error(sendJson.error || 'Send failed');
+
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to start print');
             }
-            this.showNotification(`File sent to ${printer} successfully`, 'success');
+
+            this.showNotification(`Print started on ${printerName}`, 'success');
             this.hideUploadModal();
-        } catch (err) {
-            errorEl.textContent = err.message;
+        } catch (error) {
+            this.showNotification(`Failed to start print: ${error.message}`, 'error');
+            errorEl.textContent = error.message;
             errorEl.style.display = 'block';
         } finally {
             progressEl.style.display = 'none';
@@ -1534,46 +1649,40 @@ class PrintFarmDashboard {
         if (!dz || !fileInput) return;
 
         const processFiles = (fileList) => {
-            Array.from(fileList).forEach(f => {
-                this.uploadSingleFile(f);
-            });
+            // Store files instead of uploading immediately
+            this.selectedFiles = Array.from(fileList);
+            // Update UI to show selected files
+            const fileCount = this.selectedFiles.length;
+            const dropZoneText = document.querySelector('.dz-text');
+            if (dropZoneText) {
+                dropZoneText.textContent = fileCount === 1 
+                    ? `1 file selected` 
+                    : `${fileCount} files selected`;
+            }
         };
 
         dz.addEventListener('click', () => fileInput.click());
-        if (selectBtn) selectBtn.addEventListener('click', (e)=>{e.stopPropagation();fileInput.click();});
+        if (selectBtn) selectBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.click();
+        });
 
-        dz.addEventListener('dragover', (e)=>{e.preventDefault(); dz.classList.add('drag-over');});
-        dz.addEventListener('dragleave', ()=>dz.classList.remove('drag-over'));
-        dz.addEventListener('drop', (e)=>{
-            e.preventDefault(); dz.classList.remove('drag-over');
+        dz.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dz.classList.add('drag-over');
+        });
+        
+        dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+        
+        dz.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dz.classList.remove('drag-over');
             processFiles(e.dataTransfer.files);
         });
 
-        fileInput.addEventListener('change', (e)=>{
+        fileInput.addEventListener('change', (e) => {
             processFiles(e.target.files);
         });
-    }
-
-    async uploadSingleFile(file) {
-        const progressEl = document.getElementById('upload-progress');
-        const errorEl = document.getElementById('upload-error');
-        errorEl.style.display = 'none';
-        progressEl.style.display = 'block';
-        progressEl.textContent = `Uploading ${file.name}...`;
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-            const resp = await fetch('api/gcode/upload', {method:'POST', body: formData});
-            const json = await resp.json();
-            if (!resp.ok || !json.success) throw new Error(json.error||'Upload failed');
-            this.showNotification(`Uploaded ${file.name}`, 'success');
-            this.loadFileList();
-        } catch(err){
-            errorEl.textContent = err.message;
-            errorEl.style.display='block';
-        } finally {
-            progressEl.style.display='none';
-        }
     }
 
     /* ---------------- Thumbnail Modal ---------------- */
