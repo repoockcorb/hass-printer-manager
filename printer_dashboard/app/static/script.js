@@ -349,36 +349,30 @@ class PrintFarmDashboard {
     
     async updateAllStatus() {
         if (this.isUpdating) return;
-        
         this.isUpdating = true;
-        this.setRefreshButtonState(true);
-        
+
         try {
-            const response = await fetch('api/status');
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
+            const response = await fetch('api/printer/status');
             const statusData = await response.json();
-            
-            // Update each printer's status
-            for (const [printerName, printer] of this.printers.entries()) {
-                if (statusData[printerName]) {
-                    printer.status = statusData[printerName];
+
+            if (statusData) {
+                for (const [printerName, status] of Object.entries(statusData)) {
+                    const printer = this.printers.get(printerName) || {};
+                    printer.status = status;
                     printer.lastUpdate = new Date();
-                    this.updatePrinterCard(printerName, printer.status);
+                    this.printers.set(printerName, printer);
+                    this.updatePrinterCard(printerName, printer);
                 }
             }
-            
+
             this.updateSummary();
-            this.applyFilters();
-            
+            this.updateStatusCounts();
+            this.hideLoading();
         } catch (error) {
-            console.error('Error updating status:', error);
-            this.showError(`Failed to update printer status: ${error.message}`);
+            console.error('Failed to update printer status:', error);
+            this.showError('Failed to update printer status: ' + error.message);
         } finally {
             this.isUpdating = false;
-            this.setRefreshButtonState(false);
         }
     }
     
@@ -425,10 +419,12 @@ class PrintFarmDashboard {
         }
     }
     
-    updatePrinterCard(printerName, status) {
+    updatePrinterCard(printerName, printer) {
         const card = document.querySelector(`[data-printer-name="${printerName}"]`);
-        if (!card) return;
+        if (!card || !printer || !printer.status) return;
 
+        const status = printer.status;
+        
         // Update status text and color
         const statusEl = card.querySelector('.printer-status');
         const statusText = this.formatStatusText(status);
@@ -439,15 +435,55 @@ class PrintFarmDashboard {
         
         // Add appropriate status class
         if (status.online) {
-            if (status.state.toLowerCase() === 'printing') {
+            if (status.state && status.state.toLowerCase() === 'printing') {
                 statusEl.classList.add('status-printing');
-            } else if (status.state.toLowerCase() === 'ready') {
+            } else if (status.state && status.state.toLowerCase() === 'ready') {
                 statusEl.classList.add('status-ready');
             } else {
                 statusEl.classList.add('status-error');
             }
         } else {
             statusEl.classList.add('status-offline');
+        }
+
+        // Update file name and progress
+        const fileName = card.querySelector('.file-name');
+        const progressFill = card.querySelector('.progress-fill');
+        const progressText = card.querySelector('.progress-text');
+        
+        if (status.file) {
+            fileName.textContent = status.file;
+            const progVal = (status.progress !== undefined && status.progress !== null) ? status.progress : 0;
+            progressFill.style.width = `${progVal}%`;
+            progressText.textContent = `${progVal}%`;
+        } else {
+            fileName.textContent = 'No active print';
+            progressFill.style.width = '0%';
+            progressText.textContent = '0%';
+        }
+        
+        // Update temperatures
+        if (status.extruder_temp) {
+            card.querySelector('.temp-actual').textContent = `${status.extruder_temp.actual}°`;
+            card.querySelector('.temp-target').textContent = `${status.extruder_temp.target}°`;
+        }
+        
+        if (status.bed_temp) {
+            const bedActual = card.querySelectorAll('.temp-actual')[1];
+            const bedTarget = card.querySelectorAll('.temp-target')[1];
+            if (bedActual) bedActual.textContent = `${status.bed_temp.actual}°`;
+            if (bedTarget) bedTarget.textContent = `${status.bed_temp.target}°`;
+        }
+        
+        // Update times
+        card.querySelector('.print-time').textContent = status.print_time || '00:00:00';
+        card.querySelector('.remaining-time').textContent = status.remaining_time || '00:00:00';
+        
+        // Update positions
+        if (status.position) {
+            card.querySelector('.x-pos').textContent = status.position.x || '0.00';
+            card.querySelector('.y-pos').textContent = status.position.y || '0.00';
+            card.querySelector('.z-pos').textContent = status.position.z || '0.00';
         }
 
         // Handle printer status and buttons
@@ -464,7 +500,7 @@ class PrintFarmDashboard {
 
         // Update button visibility based on status
         if (status.online) {
-            const state = status.state.toLowerCase();
+            const state = String(status.state || '').toLowerCase();
             if (state === 'printing') {
                 cancelBtn.style.display = 'flex';
                 moveBtn.style.display = 'flex';
@@ -479,14 +515,14 @@ class PrintFarmDashboard {
             }
         }
 
-        // Update button event listeners
-        this.updateButtonListeners(card, printerName, status);
-        
         // Update last update time
         const updateTime = card.querySelector('.update-time');
         if (printer.lastUpdate) {
             updateTime.textContent = this.formatRelativeTime(printer.lastUpdate);
         }
+
+        // Update button event listeners
+        this.updateButtonListeners(card, printerName, status);
     }
     
     updateButtonListeners(card, printer, data) {
@@ -829,19 +865,21 @@ class PrintFarmDashboard {
     }
     
     formatStatusText(status) {
-        const statusMap = {
-            'ready': 'Ready',
-            'printing': 'Printing',
-            'paused': 'Paused',
-            'complete': 'Complete',
-            'cancelled': 'Cancelled',
-            'error': 'Error',
-            'offline': 'Offline',
-            'standby': 'Standby',
-            'operational': 'Ready'
-        };
+        if (!status) return 'Unknown';
+        if (!status.online) return 'Offline';
         
-        return statusMap[status] || status.charAt(0).toUpperCase() + status.slice(1);
+        // Ensure state is a string
+        const state = String(status.state || '').toLowerCase();
+        
+        // Format the state text
+        if (state === 'printing') return 'Printing';
+        if (state === 'paused') return 'Paused';
+        if (state === 'complete' || state === 'finished') return 'Complete';
+        if (state === 'ready') return 'Ready';
+        if (state === 'error') return 'Error';
+        
+        // If none of the above, return the state capitalized
+        return state.charAt(0).toUpperCase() + state.slice(1) || 'Unknown';
     }
     
     formatRelativeTime(date) {
