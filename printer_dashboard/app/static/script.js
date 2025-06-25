@@ -532,6 +532,7 @@ class PrintFarmDashboard {
         switch (state) {
             case 'idle':
             case 'standby':
+            case 'operational':  // OctoPrint's ready state
                 moveBtn.style.display = 'inline-flex';
                 break;
             
