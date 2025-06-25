@@ -551,7 +551,6 @@ class PrintFarmDashboard {
                 moveBtn.style.display = 'inline-flex';
                 break;
         }
-        moveBtn.style.display = isPrinting || isPaused ? 'inline-flex' : 'none';
         
         // Update last update time
         const updateTime = card.querySelector('.update-time');
