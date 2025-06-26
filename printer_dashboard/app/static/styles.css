@@ -1569,40 +1569,4 @@ body {
         margin-top: 0.5rem;
         text-align: right;
     }
-}
-
-.notification {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 1rem 1.5rem;
-    border-radius: 8px;
-    color: #fff;
-    z-index: 1001;
-    display: none;
-    animation: slideIn 0.3s ease-out;
-    max-width: 400px;
-    background: rgba(30, 41, 59, 0.95);
-    border: 1px solid rgba(148, 163, 184, 0.2);
-}
-
-.notification.error {
-    background: rgba(239, 68, 68, 0.95);
-    border-color: rgba(248, 113, 113, 0.2);
-}
-
-.notification.success {
-    background: rgba(34, 197, 94, 0.95);
-    border-color: rgba(74, 222, 128, 0.2);
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
 } 

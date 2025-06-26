@@ -1,0 +1,17 @@
+// Replace with your printer options rename file name options.json
+{
+    "printers": [
+        {
+            "name": "Voron Tap",
+            "type": "klipper",
+            "url": "http://192.168.1.100:7125",
+            "api_key": ""
+        },
+        {
+            "name": "Prusa Mk3s+",
+            "type": "octoprint",
+            "url": "http://192.168.1.100",
+            "api_key": ""
+        }
+    ]
+} 

@@ -226,6 +226,7 @@ class KlipperAPI(PrinterAPI):
             # Get printer status
             printer_info = self._make_request('printer/info')
             printer_objects = self._make_request('printer/objects/query?print_stats&toolhead&extruder&heater_bed&display_status&virtual_sdcard&webhooks')
+            print_stats_direct = self._make_request('printer/print_stats')  # Direct print stats for accurate progress
             job_queue = self._make_request('server/job_queue/status')
             
             if not printer_objects:
@@ -247,35 +248,71 @@ class KlipperAPI(PrinterAPI):
             virtual_sdcard = status_data.get('virtual_sdcard', {})
             webhooks = status_data.get('webhooks', {})
             
+            # Get direct print stats for more accurate progress
+            direct_print_stats = {}
+            if print_stats_direct and 'result' in print_stats_direct:
+                direct_print_stats = print_stats_direct.get('result', {}).get('print_stats', {})
+            
             def safe_round(value, digits=1):
                 try:
                     return round(float(value), digits)
                 except (TypeError, ValueError):
                     return 0
             
-            # Calculate progress
+            # Calculate progress - use virtual_sdcard.progress for most accurate value
             progress = 0
             if virtual_sdcard.get('progress') not in [None, '']:
                 try:
+                    # virtual_sdcard.progress is decimal (0.0-1.0), convert to percentage
                     progress = round(float(virtual_sdcard['progress']) * 100, 1)
                 except (TypeError, ValueError):
                     progress = 0
+            elif direct_print_stats.get('progress') not in [None, '']:
+                try:
+                    # printer/print_stats progress is decimal (0.0-1.0), convert to percentage
+                    progress = round(float(direct_print_stats['progress']) * 100, 1)
+                except (TypeError, ValueError):
+                    progress = 0
+            elif display_status.get('progress') not in [None, '']:
+                try:
+                    # display_status.progress is typically in percentage (0-100)
+                    progress = round(float(display_status['progress']) * 100, 1)
+                except (TypeError, ValueError):
+                    progress = 0
             
-            # Get print time
-            print_duration = print_stats.get('print_duration', 0) or 0
+            # Get print time - use direct print_stats if available
+            print_duration = 0
+            if direct_print_stats.get('info', {}).get('print_duration') not in [None, '']:
+                print_duration = direct_print_stats.get('info', {}).get('print_duration', 0) or 0
+            else:
+                print_duration = print_stats.get('print_duration', 0) or 0
             
             # Estimate remaining time
             remaining_time = 0
             if progress > 0 and progress < 100:
                 remaining_time = (print_duration / (progress / 100)) - print_duration
             
+            # Get filename - prefer direct print_stats
+            filename = ''
+            if direct_print_stats.get('filename'):
+                filename = direct_print_stats.get('filename', '')
+            else:
+                filename = print_stats.get('filename', '')
+            
+            # Get state - prefer direct print_stats
+            state = 'ready'
+            if direct_print_stats.get('state'):
+                state = direct_print_stats.get('state', 'ready')
+            else:
+                state = print_stats.get('state', 'ready')
+            
             return {
                 'name': self.name,
                 'type': 'klipper',
                 'online': True,
-                'state': print_stats.get('state', 'ready'),
+                'state': state,
                 'progress': progress,
-                'file': print_stats.get('filename', ''),
+                'file': filename,
                 'print_time': self._format_time(print_duration),
                 'remaining_time': self._format_time(remaining_time),
                 'extruder_temp': {
@@ -325,20 +362,40 @@ class KlipperAPI(PrinterAPI):
     
     def cancel_print(self):
         """Cancel current print"""
-        return self._make_request('printer/print/cancel', method='POST', data={})
+        try:
+            response = self._make_request('printer/print/cancel', method='POST', data={})
+            logger.info(f"Cancel print response: {response}")
+            
+            if isinstance(response, dict) and 'error' in response:
+                return {'success': False, 'error': response['error']}
+            else:
+                return {'success': True, 'result': response}
+        except Exception as e:
+            logger.error(f"Error canceling print: {e}")
+            return {'success': False, 'error': str(e)}
 
     def reprint(self):
         """Reprint the last completed file using Moonraker's API"""
         try:
-            # Get current printer status to find the last printed file
-            status = self.get_status()
-            if not status or not status.get('file'):
-                return {'success': False, 'error': 'No previous print file found'}
+            # Get print history from Moonraker
+            history = self._make_request('server/history/list?limit=1')
+            if not history or 'result' not in history:
+                return {'success': False, 'error': 'Could not get print history'}
             
-            filename = status.get('file')
-            logger.info(f"Attempting to reprint file: {filename}")
+            # Get the most recent job
+            jobs = history.get('result', {}).get('jobs', [])
+            if not jobs:
+                return {'success': False, 'error': 'No print history found'}
             
-            # Use Moonraker's print_start API endpoint
+            last_job = jobs[0]
+            filename = last_job.get('filename')
+            
+            if not filename:
+                return {'success': False, 'error': 'No filename found in last print job'}
+            
+            logger.info(f"Attempting to reprint file from history: {filename}")
+            
+            # Start the print using Moonraker's API
             response = self._make_request('printer/print/start', method='POST', data={
                 'filename': filename
             })
@@ -346,16 +403,8 @@ class KlipperAPI(PrinterAPI):
             # Log the full response for debugging
             logger.info(f"Moonraker API response: {response}")
             
-            # Moonraker might return success in different ways, check multiple patterns
             if response:
-                # Some versions return {'result': 'ok'}
-                if response.get('result') == 'ok':
-                    return {'success': True}
-                # Some versions return {'status': {'result': 'ok'}}
-                elif response.get('status', {}).get('result') == 'ok':
-                    return {'success': True}
-                # If we got a response without error, consider it success
-                elif 'error' not in response:
+                if 'error' not in response:
                     return {'success': True}
                 else:
                     error_msg = response.get('error', 'Unknown error')
