@@ -640,51 +640,88 @@ class PrintFarmDashboard {
     }
     
     showControlModal(printerName, action) {
-        const modal = document.getElementById('confirm-modal');
-        const title = document.getElementById('modal-title');
-        const message = document.getElementById('modal-message');
-        const confirmBtn = document.getElementById('modal-confirm');
-        
-        const actionTexts = {
+        const modalConfig = {
             pause: {
                 title: 'Pause Print',
                 message: `Are you sure you want to pause the print on "${printerName}"?`,
-                buttonText: 'Pause'
+                buttonText: 'Pause Print'
             },
             resume: {
                 title: 'Resume Print',
-                message: `Are you sure you want to resume the print on "${printerName}"?`,
-                buttonText: 'Resume'
+                message: `Are you sure you want to resume printing on "${printerName}"?`,
+                buttonText: 'Resume Print'
             },
             cancel: {
                 title: 'Cancel Print',
-                message: `Are you sure you want to cancel the print on "${printerName}"? This action cannot be undone.`,
+                message: `Are you sure you want to cancel the print on "${printerName}"?`,
                 buttonText: 'Cancel Print'
             },
-            resume: {
-                title: 'Start Print',
-                message: `Are you sure you want to start printing the last completed file on "${printerName}"?`,
-                buttonText: 'Start Print'
+            reprint: {
+                title: 'Restart Print',
+                message: `Are you sure you want to restart printing the last file on "${printerName}"?`,
+                buttonText: 'Restart Print'
             }
         };
-        
-        const actionData = actionTexts[action];
-        if (!actionData) return;
-        
-        title.textContent = actionData.title;
-        message.textContent = actionData.message;
-        confirmBtn.textContent = actionData.buttonText;
-        
-        // Set button style based on action
-        confirmBtn.className = 'btn ' + (action === 'cancel' ? 'btn-danger' : 'btn-primary');
-        
-        // Setup confirm handler
-        confirmBtn.onclick = () => {
-            this.hideModal();
-            this.controlPrinter(printerName, action);
+
+        const config = modalConfig[action];
+        if (!config) return;
+
+        const modal = document.getElementById('controlModal');
+        const title = modal.querySelector('.modal-title');
+        const message = modal.querySelector('.modal-message');
+        const confirmBtn = modal.querySelector('.modal-confirm');
+
+        title.textContent = config.title;
+        message.textContent = config.message;
+        confirmBtn.textContent = config.buttonText;
+
+        // Show the modal
+        modal.style.display = 'block';
+
+        // Handle confirm button click
+        const handleConfirm = async () => {
+            modal.style.display = 'none';
+            if (action === 'reprint') {
+                // For reprint, we need to send a RESTART command to Klipper
+                const directInfo = this.getDirectControlInfo(printerName);
+                if (directInfo) {
+                    await fetch(`api/direct-control/${directInfo.host}/${directInfo.port}/gcode`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            gcode: 'RESTART',
+                            api_key: directInfo.api_key
+                        })
+                    });
+                }
+            } else {
+                await this.controlPrinter(printerName, action);
+            }
+            // Remove the event listener
+            confirmBtn.removeEventListener('click', handleConfirm);
         };
-        
-        modal.style.display = 'flex';
+
+        // Add event listener for confirm button
+        confirmBtn.addEventListener('click', handleConfirm);
+
+        // Handle cancel button click
+        const cancelBtn = modal.querySelector('.modal-cancel');
+        cancelBtn.onclick = () => {
+            modal.style.display = 'none';
+            // Remove the event listener from confirm button
+            confirmBtn.removeEventListener('click', handleConfirm);
+        };
+
+        // Handle clicking outside the modal
+        window.onclick = (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+                // Remove the event listener from confirm button
+                confirmBtn.removeEventListener('click', handleConfirm);
+            }
+        };
     }
     
     hideModal() {

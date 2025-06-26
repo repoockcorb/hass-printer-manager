@@ -165,6 +165,19 @@ class KlipperAPI(PrinterAPI):
             timeout: Timeout in seconds (default 30 for movement commands)
         """
         try:
+            # Special handling for RESTART command
+            if gcode_command == 'RESTART':
+                # For RESTART, we need to send SDCARD_RESET_FILE and SDCARD_PRINT_FILE
+                status = self.get_status()
+                if status and status.get('file'):
+                    filename = status['file']
+                    # Reset the SD card file position
+                    self._make_request('printer/print/restart', method='POST', data={})
+                    return {'status': 'ok', 'message': f'Restarted print of {filename}'}
+                else:
+                    return {'status': 'error', 'message': 'No file to restart'}
+
+            # Regular G-code handling
             # Encode the G-code command for URL
             encoded_gcode = urllib.parse.quote(gcode_command)
             endpoint = f"printer/gcode/script?script={encoded_gcode}"
