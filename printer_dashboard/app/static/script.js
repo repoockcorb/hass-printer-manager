@@ -561,7 +561,7 @@ class PrintFarmDashboard {
         reprintBtn.onclick = async () => {
             const lastFile = this.lastPrintFile.get(printerName);
             if (lastFile) {
-                await this.sendExistingFile(lastFile);
+                await this.showPrintConfirmation(lastFile, printerName);
             } else {
                 this.showNotification('No previous print file found', 'error');
             }
@@ -1637,13 +1637,7 @@ class PrintFarmDashboard {
     }
 
     async startPrint(fileName, printerName) {
-        const progressEl = document.getElementById('upload-progress');
-        const errorEl = document.getElementById('upload-error');
-        
         try {
-            progressEl.style.display = 'block';
-            progressEl.textContent = 'Starting print...';
-            
             const response = await fetch('api/gcode/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1660,13 +1654,8 @@ class PrintFarmDashboard {
             }
 
             this.showNotification(`Print started on ${printerName}`, 'success');
-            this.hideUploadModal();
         } catch (error) {
             this.showNotification(`Failed to start print: ${error.message}`, 'error');
-            errorEl.textContent = error.message;
-            errorEl.style.display = 'block';
-        } finally {
-            progressEl.style.display = 'none';
         }
     }
 
