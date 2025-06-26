@@ -559,7 +559,7 @@ class PrintFarmDashboard {
         cancelBtn.onclick = () => this.showControlModal(printerName, 'cancel');
         moveBtn.onclick = () => this.showMovementModal(printerName);
         reprintBtn.onclick = () => {
-            this.showControlModal(printerName, 'reprint');
+            this.showControlModal(printerName, 'resume');
         };
 
         // Update last update time
@@ -661,9 +661,9 @@ class PrintFarmDashboard {
                 message: `Are you sure you want to cancel the print on "${printerName}"? This action cannot be undone.`,
                 buttonText: 'Cancel Print'
             },
-            reprint: {
-                title: 'Reprint File',
-                message: `Are you sure you want to reprint the last file on "${printerName}"?`,
+            resume: {
+                title: 'Start Print',
+                message: `Are you sure you want to start printing the last completed file on "${printerName}"?`,
                 buttonText: 'Start Print'
             }
         };
