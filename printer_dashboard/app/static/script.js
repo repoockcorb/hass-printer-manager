@@ -558,13 +558,8 @@ class PrintFarmDashboard {
         resumeBtn.onclick = () => this.showControlModal(printerName, 'resume');
         cancelBtn.onclick = () => this.showControlModal(printerName, 'cancel');
         moveBtn.onclick = () => this.showMovementModal(printerName);
-        reprintBtn.onclick = async () => {
-            const lastFile = this.lastPrintFile.get(printerName);
-            if (lastFile) {
-                await this.showPrintConfirmation(lastFile, printerName);
-            } else {
-                this.showNotification('No previous print file found', 'error');
-            }
+        reprintBtn.onclick = () => {
+            this.showControlModal(printerName, 'reprint');
         };
 
         // Update last update time
@@ -665,6 +660,11 @@ class PrintFarmDashboard {
                 title: 'Cancel Print',
                 message: `Are you sure you want to cancel the print on "${printerName}"? This action cannot be undone.`,
                 buttonText: 'Cancel Print'
+            },
+            reprint: {
+                title: 'Reprint File',
+                message: `Are you sure you want to reprint the last file on "${printerName}"?`,
+                buttonText: 'Start Print'
             }
         };
         
@@ -697,7 +697,7 @@ class PrintFarmDashboard {
             const directInfo=this.getDirectControlInfo(printerName);
 
             const directSupported=['home','jog','gcode'];
-            const printActions=['pause','resume','cancel'];
+            const printActions=['pause','resume','cancel','reprint'];
 
             if(directInfo && directSupported.includes(action)){
                 // use direct Moonraker control for supported actions
