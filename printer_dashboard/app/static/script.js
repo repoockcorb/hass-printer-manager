@@ -552,16 +552,25 @@ class PrintFarmDashboard {
                 moveBtn.style.display = 'inline-flex';
                 break;
         }
-        
+
+        // Add click handlers for control buttons
+        pauseBtn.onclick = () => this.showControlModal(printerName, 'pause');
+        resumeBtn.onclick = () => this.showControlModal(printerName, 'resume');
+        cancelBtn.onclick = () => this.showControlModal(printerName, 'cancel');
+        moveBtn.onclick = () => this.showMovementModal(printerName);
+        reprintBtn.onclick = async () => {
+            const lastFile = this.lastPrintFile.get(printerName);
+            if (lastFile) {
+                await this.sendExistingFile(lastFile);
+            } else {
+                this.showNotification('No previous print file found', 'error');
+            }
+        };
+
         // Update last update time
         const updateTime = card.querySelector('.update-time');
         if (printer.lastUpdate) {
             updateTime.textContent = this.formatRelativeTime(printer.lastUpdate);
-        }
-
-        // Track the current print file if printing
-        if (status.file) {
-            this.lastPrintFile.set(printerName, status.file);
         }
     }
     
