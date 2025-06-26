@@ -559,7 +559,7 @@ class PrintFarmDashboard {
         cancelBtn.onclick = () => this.showControlModal(printerName, 'cancel');
         moveBtn.onclick = () => this.showMovementModal(printerName);
         reprintBtn.onclick = () => {
-            this.showControlModal(printerName, 'resume');
+            this.showControlModal(printerName, 'reprint');
         };
 
         // Update last update time
@@ -640,6 +640,7 @@ class PrintFarmDashboard {
     }
     
     showControlModal(printerName, action) {
+        console.log(`Showing control modal for ${printerName}, action: ${action}`);
         const modalConfig = {
             pause: {
                 title: 'Pause Print',
@@ -664,12 +665,25 @@ class PrintFarmDashboard {
         };
 
         const config = modalConfig[action];
-        if (!config) return;
+        if (!config) {
+            console.error(`Invalid action: ${action}`);
+            return;
+        }
 
-        const modal = document.getElementById('controlModal');
-        const title = modal.querySelector('.modal-title');
-        const message = modal.querySelector('.modal-message');
-        const confirmBtn = modal.querySelector('.modal-confirm');
+        const modal = document.getElementById('confirm-modal');
+        if (!modal) {
+            console.error('Control modal element not found!');
+            return;
+        }
+
+        const title = document.getElementById('modal-title');
+        const message = document.getElementById('modal-message');
+        const confirmBtn = document.getElementById('modal-confirm');
+
+        if (!title || !message || !confirmBtn) {
+            console.error('Required modal elements not found!');
+            return;
+        }
 
         title.textContent = config.title;
         message.textContent = config.message;
@@ -677,28 +691,13 @@ class PrintFarmDashboard {
 
         // Show the modal
         modal.style.display = 'block';
+        console.log('Modal displayed');
 
         // Handle confirm button click
         const handleConfirm = async () => {
+            console.log('Confirm button clicked');
             modal.style.display = 'none';
-            if (action === 'reprint') {
-                // For reprint, we need to send a RESTART command to Klipper
-                const directInfo = this.getDirectControlInfo(printerName);
-                if (directInfo) {
-                    await fetch(`api/direct-control/${directInfo.host}/${directInfo.port}/gcode`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            gcode: 'RESTART',
-                            api_key: directInfo.api_key
-                        })
-                    });
-                }
-            } else {
-                await this.controlPrinter(printerName, action);
-            }
+            await this.controlPrinter(printerName, action);
             // Remove the event listener
             confirmBtn.removeEventListener('click', handleConfirm);
         };
@@ -707,16 +706,20 @@ class PrintFarmDashboard {
         confirmBtn.addEventListener('click', handleConfirm);
 
         // Handle cancel button click
-        const cancelBtn = modal.querySelector('.modal-cancel');
-        cancelBtn.onclick = () => {
-            modal.style.display = 'none';
-            // Remove the event listener from confirm button
-            confirmBtn.removeEventListener('click', handleConfirm);
-        };
+        const cancelBtn = document.getElementById('modal-cancel');
+        if (cancelBtn) {
+            cancelBtn.onclick = () => {
+                console.log('Cancel button clicked');
+                modal.style.display = 'none';
+                // Remove the event listener from confirm button
+                confirmBtn.removeEventListener('click', handleConfirm);
+            };
+        }
 
         // Handle clicking outside the modal
         window.onclick = (event) => {
             if (event.target === modal) {
+                console.log('Clicked outside modal');
                 modal.style.display = 'none';
                 // Remove the event listener from confirm button
                 confirmBtn.removeEventListener('click', handleConfirm);
@@ -728,133 +731,93 @@ class PrintFarmDashboard {
         document.getElementById('confirm-modal').style.display = 'none';
     }
     
-    async controlPrinter(printerName, action) {
+    async controlPrinter(printerName, action, data = {}) {
+        console.log(`Controlling printer ${printerName} with action: ${action}`, data);
         try {
             let response;
-            const directInfo=this.getDirectControlInfo(printerName);
-
-            const directSupported=['home','jog','gcode'];
-            const printActions=['pause','resume','cancel','reprint'];
-
-            if(directInfo && directSupported.includes(action)){
-                // use direct Moonraker control for supported actions
-                console.log(`🔀 Using direct control for ${printerName} ${action}`);
-                const url=`api/direct-control/${directInfo.host}/${directInfo.port}/${action}`;
-                const body={};
-                if(action==='jog' || action==='home'){
-                    /* parameters already handled elsewhere */
+            const directInfo = this.getDirectControlInfo(printerName);
+            
+            // Print control actions use the printer/print endpoint
+            const printActions = ['pause', 'resume', 'cancel', 'reprint'];
+            
+            // Movement actions might use direct control
+            const movementActions = ['home', 'jog'];
+            
+            if (directInfo && movementActions.includes(action)) {
+                // Use direct control API for movement commands
+                console.log(`🔀 Using direct control for ${printerName} ${action} command`);
+                const url = `api/direct-control/${directInfo.host}/${directInfo.port}/${action}`;
+                const requestData = { ...data };
+                if (directInfo.api_key) {
+                    requestData.api_key = directInfo.api_key;
                 }
-                if(directInfo.api_key) body.api_key=directInfo.api_key;
-                response=await fetch(url,{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-            }else if(printActions.includes(action)){
-                // use new printer/print API for print control actions
-                response = await fetch(`api/printer/${printerName}/print/${action}`, {
+                response = await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
                 });
-            }else{
-                // regular routed API for other actions
+            } else if (printActions.includes(action)) {
+                // Use printer/print endpoint for print control actions
+                response = await fetch(`api/printer/${printerName}/print/${action}`, {
+                    method: 'POST'
+                });
+            } else {
+                // Use regular control endpoint for other actions
                 response = await fetch(`api/control/${printerName}/${action}`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
                 });
+            }
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
             const result = await response.json();
+            console.log('Control response:', result);
             
-            if (result.success) {
-                this.showNotification(`${action} command sent to ${printerName}`, 'success');
-                // Refresh status after a short delay
-                setTimeout(() => this.updateAllStatus(), 2000);
-            } else {
-                this.showNotification(`Failed to ${action} ${printerName}: ${result.error}`, 'error');
+            // Check for success in the response
+            if (!result.success && result.error) {
+                console.error(`Control action failed: ${result.error}`);
+                this.showNotification(result.error || 'Failed to control printer', 'error');
+                return false;
             }
             
+            // Show success notification
+            const actionText = action.charAt(0).toUpperCase() + action.slice(1);
+            this.showNotification(`${actionText} command sent successfully`, 'success');
+            
+            // Refresh printer status after successful control action
+            await this.refreshPrinter(printerName);
+            return true;
         } catch (error) {
-            console.error(`Error controlling printer ${printerName}:`, error);
-            this.showNotification(`Failed to ${action} ${printerName}: ${error.message}`, 'error');
+            console.error('Error controlling printer:', error);
+            this.showNotification(`Failed to control printer: ${error.message}`, 'error');
+            return false;
         }
     }
     
     showNotification(message, type = 'info') {
-        // Create notification element
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.innerHTML = `
-            <span>${message}</span>
-            <button class="notification-close">&times;</button>
-        `;
-        
-        // Add styles
-        const style = document.createElement('style');
-        style.textContent = `
-            .notification {
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: rgba(30, 41, 59, 0.95);
-                border: 1px solid rgba(148, 163, 184, 0.2);
-                border-radius: 8px;
-                padding: 1rem 1.5rem;
-                color: #e0e6ed;
-                z-index: 1001;
-                display: flex;
-                align-items: center;
-                gap: 1rem;
-                max-width: 400px;
-                animation: slideIn 0.3s ease-out;
-            }
-            
-            .notification-success {
-                border-left: 4px solid #34d399;
-            }
-            
-            .notification-error {
-                border-left: 4px solid #f87171;
-            }
-            
-            .notification-close {
-                background: none;
-                border: none;
-                color: #94a3b8;
-                cursor: pointer;
-                font-size: 1.2rem;
-                padding: 0;
-            }
-            
-            .notification-close:hover {
-                color: #e0e6ed;
-            }
-            
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-        `;
-        
-        if (!document.querySelector('#notification-styles')) {
-            style.id = 'notification-styles';
-            document.head.appendChild(style);
+        // Create notification element if it doesn't exist
+        let notification = document.getElementById('notification');
+        if (!notification) {
+            notification = document.createElement('div');
+            notification.id = 'notification';
+            document.body.appendChild(notification);
         }
         
-        // Add to page
-        document.body.appendChild(notification);
+        // Set notification style based on type
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
         
-        // Setup close handler
-        notification.querySelector('.notification-close').addEventListener('click', () => {
-            notification.remove();
-        });
+        // Show notification
+        notification.style.display = 'block';
         
-        // Auto remove after 5 seconds
+        // Hide after 3 seconds
         setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
-            }
-        }, 5000);
+            notification.style.display = 'none';
+        }, 3000);
     }
     
     startAutoUpdate() {
@@ -1258,84 +1221,6 @@ class PrintFarmDashboard {
         }
     }
     
-    async performHomeAction(axes) {
-        if (!this.currentMovementPrinter) return;
-        
-        // Prevent multiple simultaneous commands
-        if (this.isMovementInProgress) {
-            this.showNotification('Movement command already in progress', 'warning');
-            return;
-        }
-        
-        this.isMovementInProgress = true;
-        this.setMovementButtonsState(false); // Disable buttons
-        
-        try {
-            // Check if we need to use direct control
-            const directInfo = this.getDirectControlInfo(this.currentMovementPrinter);
-            
-            let response, requestData = {};
-            
-            // Show loading notification
-            const axesText = axes || 'all axes';
-            this.showNotification(`Homing ${axesText}... Please wait`, 'info');
-            
-            if (directInfo) {
-                // Use direct control API
-                console.log(`🔀 Using direct control for ${this.currentMovementPrinter} home command`);
-                
-                if (axes && axes !== 'all') {
-                    requestData.axes = [axes];
-                }
-                if (directInfo.api_key) {
-                    requestData.api_key = directInfo.api_key;
-                }
-                
-                console.log(`Homing ${this.currentMovementPrinter} via direct API: ${axes || 'all axes'}`);
-                
-                response = await fetch(`api/direct-control/${directInfo.host}/${directInfo.port}/home`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestData)
-                });
-            } else {
-                // Use regular API
-                console.log(`📡 Using regular API for ${this.currentMovementPrinter} home command`);
-                
-                if (axes && axes !== 'all') {
-                    requestData.axes = [axes];
-                }
-                
-                console.log(`Homing ${this.currentMovementPrinter}: ${axes || 'all axes'}`);
-                
-                response = await fetch(`api/control/${this.currentMovementPrinter}/home`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestData)
-                });
-            }
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.showNotification(`Homing ${axesText} completed successfully`, 'success');
-            } else {
-                this.showNotification(`Homing failed: ${result.error}`, 'error');
-            }
-            
-        } catch (error) {
-            console.error('Error performing home action:', error);
-            this.showNotification(`Homing failed: ${error.message}`, 'error');
-        } finally {
-            this.isMovementInProgress = false;
-            this.setMovementButtonsState(true); // Re-enable buttons
-        }
-    }
-    
     async performJogAction(axis, direction) {
         if (!this.currentMovementPrinter || !this.selectedDistance) return;
         
@@ -1351,66 +1236,54 @@ class PrintFarmDashboard {
         const distance = this.selectedDistance * direction;
         
         try {
-            // Show loading notification
-            this.showNotification(`Jogging ${axis}${distance > 0 ? '+' : ''}${distance}mm... Please wait`, 'info');
+            const result = await this.controlPrinter(this.currentMovementPrinter, 'jog', {
+                axis: axis,
+                distance: distance
+            });
             
-            // Check if we need to use direct control
-            const directInfo = this.getDirectControlInfo(this.currentMovementPrinter);
-            
-            let response;
-            
-            if (directInfo) {
-                // Use direct control API
-                console.log(`🔀 Using direct control for ${this.currentMovementPrinter} jog command`);
-                
-                const requestData = {
-                    axis: axis,
-                    distance: distance
-                };
-                if (directInfo.api_key) {
-                    requestData.api_key = directInfo.api_key;
-                }
-                
-                console.log(`Jogging ${this.currentMovementPrinter} via direct API: ${axis}${distance > 0 ? '+' : ''}${distance}mm`);
-                
-                response = await fetch(`api/direct-control/${directInfo.host}/${directInfo.port}/jog`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(requestData)
-                });
-            } else {
-                // Use regular API
-                console.log(`📡 Using regular API for ${this.currentMovementPrinter} jog command`);
-                console.log(`Jogging ${this.currentMovementPrinter}: ${axis}${distance > 0 ? '+' : ''}${distance}mm`);
-                
-                response = await fetch(`api/control/${this.currentMovementPrinter}/jog`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        axis: axis,
-                        distance: distance
-                    })
-                });
+            if (!result) {
+                this.showNotification(`Failed to jog ${axis}${distance > 0 ? '+' : ''}${distance}mm`, 'error');
             }
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.showNotification(`Jogged ${axis}${distance > 0 ? '+' : ''}${distance}mm successfully`, 'success');
-            } else {
-                this.showNotification(`Jog failed: ${result.error}`, 'error');
-            }
-            
         } catch (error) {
             console.error('Error performing jog action:', error);
             this.showNotification(`Jog failed: ${error.message}`, 'error');
         } finally {
             this.isMovementInProgress = false;
             this.setMovementButtonsState(true); // Re-enable buttons
+            // Refresh printer status after movement
+            await this.refreshPrinter(this.currentMovementPrinter);
+        }
+    }
+    
+    async performHomeAction(axes) {
+        if (!this.currentMovementPrinter) return;
+        
+        // Prevent multiple simultaneous commands
+        if (this.isMovementInProgress) {
+            this.showNotification('Movement command already in progress', 'warning');
+            return;
+        }
+        
+        this.isMovementInProgress = true;
+        this.setMovementButtonsState(false); // Disable buttons
+        
+        try {
+            const result = await this.controlPrinter(this.currentMovementPrinter, 'home', {
+                axes: axes ? [axes] : undefined
+            });
+            
+            if (!result) {
+                const axesText = axes || 'all axes';
+                this.showNotification(`Failed to home ${axesText}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error performing home action:', error);
+            this.showNotification(`Home failed: ${error.message}`, 'error');
+        } finally {
+            this.isMovementInProgress = false;
+            this.setMovementButtonsState(true); // Re-enable buttons
+            // Refresh printer status after movement
+            await this.refreshPrinter(this.currentMovementPrinter);
         }
     }
     

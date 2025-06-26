@@ -326,7 +326,48 @@ class KlipperAPI(PrinterAPI):
     def cancel_print(self):
         """Cancel current print"""
         return self._make_request('printer/print/cancel', method='POST', data={})
-    
+
+    def reprint(self):
+        """Reprint the last completed file using Moonraker's API"""
+        try:
+            # Get current printer status to find the last printed file
+            status = self.get_status()
+            if not status or not status.get('file'):
+                return {'success': False, 'error': 'No previous print file found'}
+            
+            filename = status.get('file')
+            logger.info(f"Attempting to reprint file: {filename}")
+            
+            # Use Moonraker's print_start API endpoint
+            response = self._make_request('printer/print/start', method='POST', data={
+                'filename': filename
+            })
+            
+            # Log the full response for debugging
+            logger.info(f"Moonraker API response: {response}")
+            
+            # Moonraker might return success in different ways, check multiple patterns
+            if response:
+                # Some versions return {'result': 'ok'}
+                if response.get('result') == 'ok':
+                    return {'success': True}
+                # Some versions return {'status': {'result': 'ok'}}
+                elif response.get('status', {}).get('result') == 'ok':
+                    return {'success': True}
+                # If we got a response without error, consider it success
+                elif 'error' not in response:
+                    return {'success': True}
+                else:
+                    error_msg = response.get('error', 'Unknown error')
+                    logger.error(f"Reprint failed with error: {error_msg}")
+                    return {'success': False, 'error': error_msg}
+            else:
+                return {'success': False, 'error': 'No response from printer'}
+                
+        except Exception as e:
+            logger.error(f"Error during reprint: {str(e)}")
+            return {'success': False, 'error': str(e)}
+
     def home_printer(self, axes=None):
         """Home printer axes. If axes is None, homes all axes"""
         if axes is None or axes == 'all':
@@ -609,6 +650,8 @@ class PrinterManager:
                 result = printer.resume_print()
             elif action == 'cancel':
                 result = printer.cancel_print()
+            elif action == 'reprint':
+                result = printer.reprint()
             elif action == 'home':
                 axes = kwargs.get('axes')
                 result = printer.home_printer(axes)
@@ -632,7 +675,18 @@ printer_manager = PrinterManager()
 
 class PrinterStorage:
     def __init__(self):
-        self.config_file = '/data/options.json'
+        # Get the absolute path to the root directory (one level up from app directory)
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        local_config = os.path.join(root_dir, 'options.json')
+        
+        # Check if we're in development mode (not in Home Assistant add-on)
+        if os.path.exists(local_config):
+            self.config_file = local_config
+            logger.info(f"Running in development mode, using local config: {local_config}")
+        else:
+            self.config_file = '/data/options.json'
+            logger.info("Running in production mode, using /data/options.json")
+        
         logger.info(f"PrinterStorage initialized with config file: {self.config_file}")
         self._load_printers()
     
@@ -645,7 +699,7 @@ class PrinterStorage:
             printer_manager.add_printer(printer_config)
     
     def get_printers(self):
-        """Load printers from Home Assistant add-on configuration"""
+        """Load printers from configuration file"""
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r') as f:
@@ -907,7 +961,7 @@ def printer_print_control(printer_name, action):
         logger.info(f"Print control request: {printer_name} -> {action}")
         
         # Validate action
-        allowed_actions = ['pause', 'resume', 'cancel']
+        allowed_actions = ['pause', 'resume', 'cancel', 'reprint']
         if action not in allowed_actions:
             return jsonify({'success': False, 'error': f'Invalid action: {action}. Allowed: {allowed_actions}'}), 400
         
