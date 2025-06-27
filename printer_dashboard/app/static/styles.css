@@ -1540,6 +1540,9 @@ body {
     max-height: 300px;
     object-fit: contain;
     width: 100%;
+    image-rendering: smooth;
+    image-rendering: high-quality;
+    image-rendering: -webkit-optimize-contrast;
 }
 
 /* Thumbnail modal styling */

@@ -49,25 +49,47 @@ THUMB_RE_END = re.compile(r";\s*thumbnail end", re.IGNORECASE)
 
 
 def _extract_embedded_thumbnail(path: str):
-    """Parse a G-code file and return PNG bytes if an embedded thumbnail is found."""
+    """Parse a G-code file and return PNG bytes of the largest embedded thumbnail found."""
     try:
+        thumbnails = []
         with open(path, "r", encoding="utf-8", errors="ignore") as fh:
             collecting = False
+            current_size = (0, 0)
             b64_lines = []
+            
             for line in fh:
                 if not collecting:
-                    if THUMB_RE_BEGIN.match(line):
+                    match = THUMB_RE_BEGIN.match(line)
+                    if match:
+                        width, height = int(match.group(1)), int(match.group(2))
+                        current_size = (width, height)
                         collecting = True
+                        b64_lines = []
                         continue
                 else:
                     if THUMB_RE_END.match(line):
-                        break
+                        if b64_lines:
+                            try:
+                                b64_data = "".join(b64_lines)
+                                thumbnail_bytes = base64.b64decode(b64_data)
+                                # Store thumbnail with its size for later comparison
+                                thumbnails.append((current_size[0] * current_size[1], thumbnail_bytes))
+                            except Exception as e:
+                                logger.debug(f"Failed to decode thumbnail {current_size}: {e}")
+                        collecting = False
+                        b64_lines = []
+                        continue
                     # Remove leading '; ' or ';'
                     cleaned = line.lstrip(';').strip()
                     b64_lines.append(cleaned)
-            if b64_lines:
-                b64_data = "".join(b64_lines)
-                return base64.b64decode(b64_data)
+            
+            # Return the largest thumbnail (by pixel count)
+            if thumbnails:
+                thumbnails.sort(key=lambda x: x[0], reverse=True)  # Sort by pixel count, largest first
+                largest_thumbnail = thumbnails[0][1]
+                logger.debug(f"Selected largest thumbnail from {len(thumbnails)} available thumbnails")
+                return largest_thumbnail
+                
     except Exception as e:
         logger.debug(f"No thumbnail extracted from {path}: {e}")
     return None
