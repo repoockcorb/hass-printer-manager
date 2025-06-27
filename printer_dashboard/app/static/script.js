@@ -1885,6 +1885,17 @@ class PrintFarmDashboard {
         img.style.display='none'; err.style.display='none'; load.style.display='flex';
         modal.style.display='flex';
 
+        // Add printer type to modal for different styling
+        const printer = this.printers.get(printerName);
+        console.log('Printer data:', printer); // Debug log
+        if (printer && printer.status && printer.status.type) {
+            const printerType = printer.status.type.toLowerCase();
+            console.log('Setting printer type:', printerType); // Debug log
+            modal.setAttribute('data-printer-type', printerType);
+        } else {
+            console.log('No printer type found in data'); // Debug log
+        }
+
         const tryUrls=[
             `files/thumbnail?filename=${encodeURIComponent(fileName)}`,
             `api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(fileName)}`

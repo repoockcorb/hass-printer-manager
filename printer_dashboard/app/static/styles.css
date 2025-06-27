@@ -1542,6 +1542,37 @@ body {
     width: 100%;
 }
 
+/* Thumbnail modal styling */
+#thumb-img {
+    max-height: 250px !important;
+    max-width: 350px !important;
+    min-height: 150px !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.3) !important;
+}
+
+/* OctoPrint thumbnails - larger size */
+.thumb-modal[data-printer-type="octoprint"] #thumb-img {
+    max-height: 450px !important;
+    max-width: 550px !important;
+    min-height: 250px !important;
+}
+
+.thumb-modal .modal-content {
+    max-width: 600px;
+    min-height: 350px;
+}
+
+.thumb-modal .modal-body {
+    min-height: 250px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}
+
 .printer-actions {
     display: flex;
     gap: 0.5rem;

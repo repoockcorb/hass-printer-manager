@@ -14,6 +14,18 @@ import urllib.parse
 from werkzeug.utils import secure_filename
 import base64
 import re
+import tempfile
+import yaml
+import asyncio
+from typing import Optional, Dict, Any
+from urllib.parse import urlparse
+from werkzeug.utils import secure_filename
+from flask import Flask, render_template, jsonify, request, url_for, send_file, Response
+try:
+    from moonraker_api import MoonrakerClient, MoonrakerListener
+    MOONRAKER_API_AVAILABLE = True
+except ImportError:
+    MOONRAKER_API_AVAILABLE = False
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -158,45 +170,25 @@ class KlipperAPI(PrinterAPI):
     """Moonraker API for Klipper printers"""
     
     def _send_gcode(self, gcode_command, timeout=30):
-        """Send G-code command to Moonraker using URL parameters
-        
-        Args:
-            gcode_command: The G-code to send
-            timeout: Timeout in seconds (default 30 for movement commands)
-        """
+        """Send G-code command to printer"""
         try:
-            # Special handling for RESTART command
-            if gcode_command == 'RESTART':
-                # For RESTART, we need to send SDCARD_RESET_FILE and SDCARD_PRINT_FILE
-                status = self.get_status()
-                if status and status.get('file'):
-                    filename = status['file']
-                    # Reset the SD card file position
-                    self._make_request('printer/print/restart', method='POST', data={})
-                    return {'status': 'ok', 'message': f'Restarted print of {filename}'}
-                else:
-                    return {'status': 'error', 'message': 'No file to restart'}
-
-            # Regular G-code handling
-            # Encode the G-code command for URL
-            encoded_gcode = urllib.parse.quote(gcode_command)
-            endpoint = f"printer/gcode/script?script={encoded_gcode}"
+            # Send gcode command using Moonraker's gcode/script endpoint
+            response = self._make_request('printer/gcode/script', method='POST', 
+                                        data={'script': gcode_command}, timeout=timeout)
             
-            headers = {'Content-Type': 'application/json'}
-            if self.api_key:
-                headers['Authorization'] = f'Bearer {self.api_key}'
+            if response is None:
+                logger.error(f"{self.name} G-code command failed: No response")
+                return None
                 
-            url = f"{self.url}/{endpoint}"
-            logger.info(f"{self.name} sending G-code via URL: {url} (timeout: {timeout}s)")
-            
-            response = requests.post(url, headers=headers, timeout=timeout)
-            logger.info(f"{self.name} G-code response status: {response.status_code}")
-            
-            # Check if the request was successful
-            response.raise_for_status()
-            
-            # Parse response - Moonraker may return empty response for successful G-code
-            if response.text:
+            # Handle different response formats
+            if isinstance(response, dict):
+                if 'error' in response:
+                    logger.error(f"{self.name} G-code error: {response['error']}")
+                    return None
+                logger.info(f"{self.name} G-code response: {response}")
+                return response
+            elif hasattr(response, 'text') and response.text:
+                # Parse text response
                 try:
                     result = response.json()
                     logger.info(f"{self.name} G-code response JSON: {result}")
@@ -219,7 +211,7 @@ class KlipperAPI(PrinterAPI):
         except Exception as e:
             logger.error(f"{self.name} G-code command failed: {e}")
             return None
-    
+
     def get_status(self):
         """Get comprehensive printer status"""
         try:
@@ -342,7 +334,7 @@ class KlipperAPI(PrinterAPI):
                 'state': 'error',
                 'error': str(e)
             }
-    
+
     def _format_time(self, seconds):
         """Format seconds into HH:MM:SS"""
         if seconds <= 0:
@@ -351,15 +343,15 @@ class KlipperAPI(PrinterAPI):
         minutes = int((seconds % 3600) // 60)
         seconds = int(seconds % 60)
         return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-    
+
     def pause_print(self):
         """Pause current print"""
         return self._make_request('printer/print/pause', method='POST', data={})
-    
+
     def resume_print(self):
         """Resume current print"""
         return self._make_request('printer/print/resume', method='POST', data={})
-    
+
     def cancel_print(self):
         """Cancel current print"""
         try:
@@ -460,8 +452,9 @@ class KlipperAPI(PrinterAPI):
         else:
             logger.error(f"{self.name} home command failed or timed out")
             return {'success': False, 'error': 'Homing command failed or timed out'}
-    
+
     def jog_printer(self, axis, distance):
+        """Jog printer in specified axis by distance (in mm)"""
         """Jog printer in specified axis by distance (in mm)"""
         axis = axis.upper()
         if axis not in ['X', 'Y', 'Z']:
@@ -494,6 +487,166 @@ class KlipperAPI(PrinterAPI):
         else:
             logger.error(f"{self.name} jog command failed or timed out")
             return {'success': False, 'error': 'Jog command failed or timed out'}
+
+
+class KlipperWebSocketAPI(KlipperAPI):
+    """Enhanced Klipper API using WebSocket connection via moonraker-api"""
+    
+    def __init__(self, name, printer_type, url, api_key=None):
+        super().__init__(name, printer_type, url, api_key)
+        self.ws_client = None
+        self.ws_listener = None
+        self._loop = None
+        self._connected = False
+        
+        # Parse URL to get host and port
+        parsed = urlparse(url)
+        self.host = parsed.hostname or 'localhost'
+        self.port = parsed.port or 7125
+        
+        if MOONRAKER_API_AVAILABLE:
+            self._setup_websocket()
+    
+    def _setup_websocket(self):
+        """Setup WebSocket client for real-time communication"""
+        class PrinterListener(MoonrakerListener):
+            def __init__(self, printer_api):
+                self.printer_api = printer_api
+                
+            async def state_changed(self, state: str) -> None:
+                logger.debug(f"{self.printer_api.name} WebSocket state: {state}")
+                self.printer_api._connected = state == "ready"
+                
+            async def on_exception(self, exception: Exception) -> None:
+                logger.error(f"{self.printer_api.name} WebSocket exception: {exception}")
+                
+            async def on_notification(self, method: str, data) -> None:
+                logger.debug(f"{self.printer_api.name} WebSocket notification: {method}")
+        
+        self.ws_listener = PrinterListener(self)
+        self.ws_client = MoonrakerClient(
+            self.ws_listener,
+            self.host,
+            self.port,
+            self.api_key
+        )
+    
+    async def connect_websocket(self):
+        """Connect to WebSocket if available"""
+        if self.ws_client and not self._connected:
+            try:
+                await self.ws_client.connect()
+                return True
+            except Exception as e:
+                logger.error(f"{self.name} WebSocket connection failed: {e}")
+                return False
+        return self._connected
+    
+    async def disconnect_websocket(self):
+        """Disconnect WebSocket"""
+        if self.ws_client and self._connected:
+            try:
+                await self.ws_client.disconnect()
+                self._connected = False
+            except Exception as e:
+                logger.error(f"{self.name} WebSocket disconnect failed: {e}")
+    
+    async def get_thumbnail_async(self, filename: str) -> Optional[bytes]:
+        """Get thumbnail data for a file using WebSocket API"""
+        if not self.ws_client or not self._connected:
+            return None
+            
+        try:
+            # Query file metadata to get thumbnail path
+            response = await self.ws_client.request("server.files.metadata", {"filename": filename})
+            
+            if not response or "result" not in response:
+                return None
+                
+            metadata = response["result"]
+            thumbnails = metadata.get("thumbnails", [])
+            
+            if not thumbnails:
+                return None
+            
+            # Get the largest thumbnail available
+            largest_thumb = max(thumbnails, key=lambda t: t.get("width", 0) * t.get("height", 0))
+            thumb_path = largest_thumb.get("relative_path")
+            
+            if not thumb_path:
+                return None
+            
+            # Download thumbnail data
+            thumb_response = await self.ws_client.request("server.files.get_file", {
+                "path": f"gcodes/{thumb_path}"
+            })
+            
+            if thumb_response and "result" in thumb_response:
+                return thumb_response["result"]
+                
+        except Exception as e:
+            logger.error(f"{self.name} Failed to get thumbnail via WebSocket: {e}")
+            
+        return None
+    
+    def get_thumbnail(self, filename: str) -> Optional[bytes]:
+        """Synchronous wrapper for thumbnail retrieval"""
+        if not MOONRAKER_API_AVAILABLE or not self.ws_client:
+            # Fallback to HTTP method
+            return self._get_thumbnail_http(filename)
+            
+        # Run async method in event loop
+        try:
+            if self._loop is None or self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(self._loop)
+            
+            # Ensure connection
+            if not self._connected:
+                self._loop.run_until_complete(self.connect_websocket())
+            
+            if self._connected:
+                return self._loop.run_until_complete(self.get_thumbnail_async(filename))
+                
+        except Exception as e:
+            logger.error(f"{self.name} Async thumbnail retrieval failed: {e}")
+            
+        # Fallback to HTTP
+        return self._get_thumbnail_http(filename)
+    
+    def _get_thumbnail_http(self, filename: str) -> Optional[bytes]:
+        """Fallback HTTP method for thumbnail retrieval"""
+        try:
+            # Get file metadata first
+            metadata_response = self._make_request(f'server/files/metadata?filename={filename}')
+            if not metadata_response or 'result' not in metadata_response:
+                return None
+                
+            metadata = metadata_response['result']
+            thumbnails = metadata.get('thumbnails', [])
+            
+            if not thumbnails:
+                return None
+            
+            # Get the largest thumbnail
+            largest_thumb = max(thumbnails, key=lambda t: t.get('width', 0) * t.get('height', 0))
+            thumb_path = largest_thumb.get('relative_path')
+            
+            if not thumb_path:
+                return None
+            
+            # Download thumbnail
+            thumb_url = f"{self.url.rstrip('/')}/server/files/gcodes/{thumb_path}"
+            response = requests.get(thumb_url, timeout=10)
+            
+            if response.status_code == 200:
+                return response.content
+                
+        except Exception as e:
+            logger.error(f"{self.name} HTTP thumbnail retrieval failed: {e}")
+            
+        return None
+
 
 class OctoPrintAPI(PrinterAPI):
     """OctoPrint API for OctoPrint printers"""
@@ -692,7 +845,13 @@ class PrinterManager:
             
         try:
             if printer_type in ['klipper', 'moonraker']:
-                printer = KlipperAPI(name, 'klipper', url, api_key)
+                # Use WebSocket API if available, otherwise fall back to regular HTTP API
+                if MOONRAKER_API_AVAILABLE and config.get('use_websocket', True):
+                    printer = KlipperWebSocketAPI(name, 'klipper', url, api_key)
+                    logger.info(f"Using WebSocket API for {name}")
+                else:
+                    printer = KlipperAPI(name, 'klipper', url, api_key)
+                    logger.info(f"Using HTTP API for {name}")
             elif printer_type == 'octoprint':
                 printer = OctoPrintAPI(name, 'octoprint', url, api_key)
             else:
@@ -1695,86 +1854,142 @@ def _proxy_thumbnail(remote_url: str, headers=None, timeout: int = 10):
 
 @app.route('/api/thumbnail/<printer_name>')
 def get_thumbnail(printer_name):
-    """Proxy thumbnail image for the given printer and file.
-
-    Query parameters:
-        file: The file name currently printing (should match exactly what is reported in status.file).
-    """
+    """Get print thumbnail for current job"""
     try:
-        file_name = request.args.get('file')
-        if not file_name:
-            return jsonify({'error': 'Missing file parameter'}), 400
-
         if printer_name not in printer_manager.printers:
             return jsonify({'error': 'Printer not found'}), 404
-
+            
         printer = printer_manager.printers[printer_name]
-        remote_url = None
-        headers = {}
-
-        if printer.printer_type == 'klipper':
-            # Use Moonraker's direct thumbnail endpoint
-            thumbnail_endpoint = f"server/files/thumbnails?filename={urllib.parse.quote(file_name)}"
+        
+        # Get current status to find filename
+        status = printer.get_status()
+        if not status or not status.get('online', False):
+            return jsonify({'error': 'Printer offline'}), 503
+        
+        filename = status.get('file', '').strip()
+        if not filename:
+            return jsonify({'error': 'No active print job'}), 404
+        
+        # Try to get thumbnail using enhanced WebSocket API if available
+        thumbnail_data = None
+        if hasattr(printer, 'get_thumbnail'):
             try:
-                # Make request to Moonraker thumbnail endpoint
-                headers = {}
-                if printer.api_key:
-                    headers['Authorization'] = f'Bearer {printer.api_key}'
-                
-                thumbnail_url = f"{printer.url}/{thumbnail_endpoint}"
-                logger.info(f"Fetching Klipper thumbnail from: {thumbnail_url}")
-                
-                response = requests.get(thumbnail_url, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    # Return the thumbnail directly
-                    content_type = response.headers.get('Content-Type', 'image/png')
-                    return Response(response.content, mimetype=content_type)
-                else:
-                    logger.warning(f"Klipper thumbnail not found for {file_name}, status: {response.status_code}")
+                thumbnail_data = printer.get_thumbnail(filename)
             except Exception as e:
-                logger.error(f"Error fetching Klipper thumbnail for {file_name}: {e}")
+                logger.error(f"Enhanced thumbnail retrieval failed for {printer_name}: {e}")
+        
+        # Fallback to original thumbnail retrieval method for Klipper
+        if not thumbnail_data and printer.printer_type == 'klipper':
+            try:
+                # Get file metadata first
+                metadata_response = printer._make_request(f'server/files/metadata?filename={filename}')
+                if not metadata_response or 'result' not in metadata_response:
+                    return jsonify({'error': 'Could not get file metadata'}), 404
+                    
+                metadata = metadata_response['result']
+                thumbnails = metadata.get('thumbnails', [])
                 
-            # Fallback to metadata approach if direct thumbnail fails
-            meta_endpoint = f"server/files/metadata?filename={urllib.parse.quote(file_name)}"
-            meta = printer._make_request(meta_endpoint)
-            thumbnails = (meta or {}).get('result', {}).get('metadata', {}).get('thumbnails', [])
-            if thumbnails:
-                # Choose the largest thumbnail available (usually last item)
-                thumb = sorted(thumbnails, key=lambda t: t.get('size', 0))[-1]
-                rel_path = thumb.get('relative_path') or thumb.get('path')
-                if rel_path:
-                    # Construct absolute Moonraker URL; handle leading slashes
-                    if rel_path.startswith('/'):
-                        remote_url = f"{printer.url}{rel_path}"
-                    else:
-                        remote_url = f"{printer.url}/{rel_path}"
-        elif printer.printer_type == 'octoprint':
-            # OctoPrint file metadata contains a direct thumbnail URL
-            meta_endpoint = f"api/files/local/{urllib.parse.quote(file_name, safe='')}"
-            meta = printer._make_request(meta_endpoint)
-            thumb_path = (meta or {}).get('thumbnail')
-            if thumb_path:
-                remote_url = f"{printer.url}{thumb_path}" if thumb_path.startswith('/') else f"{printer.url}/{thumb_path}"
-                # OctoPrint thumbnails are typically served without auth, but include API key if provided
-                if printer.api_key:
-                    headers['X-Api-Key'] = printer.api_key
-
-        # Placeholder transparent PNG (1×1)
-        placeholder_png = base64.b64decode(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=='
-        )
-
-        if not remote_url:
+                if not thumbnails:
+                    return jsonify({'error': 'No thumbnails available'}), 404
+                
+                # Get the largest thumbnail
+                largest_thumb = max(thumbnails, key=lambda t: t.get('width', 0) * t.get('height', 0))
+                thumb_path = largest_thumb.get('relative_path')
+                
+                if not thumb_path:
+                    return jsonify({'error': 'No valid thumbnail path'}), 404
+                
+                # Download thumbnail
+                thumb_url = f"{printer.url.rstrip('/')}/server/files/gcodes/{thumb_path}"
+                response = requests.get(thumb_url, timeout=10)
+                
+                if response.status_code == 200:
+                    thumbnail_data = response.content
+                
+            except Exception as e:
+                logger.error(f"Fallback thumbnail retrieval failed for {printer_name}: {e}")
+        
+        # Handle OctoPrint thumbnails
+        elif not thumbnail_data and printer.printer_type == 'octoprint':
+            try:
+                # OctoPrint file metadata contains a direct thumbnail URL
+                import urllib.parse
+                meta_endpoint = f"api/files/local/{urllib.parse.quote(filename, safe='')}"
+                meta = printer._make_request(meta_endpoint)
+                
+                if meta:
+                    thumb_path = meta.get('thumbnail')
+                    if thumb_path:
+                        # Construct thumbnail URL
+                        if thumb_path.startswith('/'):
+                            thumb_url = f"{printer.url}{thumb_path}"
+                        else:
+                            thumb_url = f"{printer.url}/{thumb_path}"
+                        
+                        # Set up headers for OctoPrint
+                        headers = {}
+                        if printer.api_key:
+                            headers['X-Api-Key'] = printer.api_key
+                        
+                        # Download thumbnail
+                        response = requests.get(thumb_url, headers=headers, timeout=10)
+                        if response.status_code == 200:
+                            thumbnail_data = response.content
+                            
+            except Exception as e:
+                logger.error(f"OctoPrint thumbnail retrieval failed for {printer_name}: {e}")
+        
+        # Return thumbnail or placeholder
+        if thumbnail_data:
+            # Determine content type based on data
+            content_type = 'image/jpeg'  # Default
+            if thumbnail_data.startswith(b'\x89PNG'):
+                content_type = 'image/png'
+            elif thumbnail_data.startswith(b'GIF'):
+                content_type = 'image/gif'
+            
+            return Response(thumbnail_data, mimetype=content_type)
+        else:
+            # Return placeholder transparent PNG (1×1)
+            placeholder_png = base64.b64decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg=='
+            )
             return Response(placeholder_png, mimetype='image/png')
-
-        data, content_type = _proxy_thumbnail(remote_url, headers=headers)
-        if data is None:
-            return Response(placeholder_png, mimetype='image/png')
-
-        return Response(data, mimetype=content_type)
-
+            
     except Exception as e:
-        logger.error(f"Error fetching thumbnail for {printer_name}: {e}")
+        logger.error(f"Error getting thumbnail for {printer_name}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/thumbnail-enhanced/<printer_name>/<filename>')
+def get_thumbnail_enhanced(printer_name, filename):
+    """Enhanced thumbnail endpoint with WebSocket API support"""
+    try:
+        if printer_name not in printer_manager.printers:
+            return jsonify({'error': 'Printer not found'}), 404
+            
+        printer = printer_manager.printers[printer_name]
+        
+        # Check if printer supports enhanced thumbnail retrieval
+        if hasattr(printer, 'get_thumbnail'):
+            try:
+                thumbnail_data = printer.get_thumbnail(filename)
+                if thumbnail_data:
+                    # Determine content type
+                    content_type = 'image/jpeg'  # Default
+                    if thumbnail_data.startswith(b'\x89PNG'):
+                        content_type = 'image/png'
+                    elif thumbnail_data.startswith(b'GIF'):
+                        content_type = 'image/gif'
+                    
+                    return Response(thumbnail_data, mimetype=content_type)
+            except Exception as e:
+                logger.error(f"Enhanced thumbnail retrieval failed: {e}")
+        
+        return jsonify({'error': 'Thumbnail not available or unsupported'}), 404
+        
+    except Exception as e:
+        logger.error(f"Error in enhanced thumbnail endpoint: {e}")
         return jsonify({'error': str(e)}), 500
 
 ############################################
