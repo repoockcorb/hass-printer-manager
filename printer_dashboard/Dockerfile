@@ -4,15 +4,22 @@ FROM alpine:3.18
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    py3-flask \
-    py3-requests \
     nginx \
     curl \
     jq \
-    bash
+    bash \
+    gcc \
+    musl-dev \
+    python3-dev
 
 # Create app directory
 RUN mkdir -p /app
+
+# Copy requirements first for better Docker layer caching
+COPY requirements.txt /app/
+
+# Install Python requirements
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
 
 # Copy application files
 COPY app/ /app/
