@@ -540,16 +540,38 @@ class PrintFarmDashboard {
 
         // Show buttons based on machine state
         const state = status.state.toLowerCase();
+        const printerData = this.printers.get(printerName);
+        const printerType = printerData?.config?.type || 'klipper';
+        
+        // Determine if reprint should be available
+        let shouldShowReprint = false;
+        if (printerType === 'klipper') {
+            // For Klipper, check if we have a tracked last print file
+            shouldShowReprint = this.lastPrintFile.has(printerName);
+        } else if (printerType === 'octoprint') {
+            // For OctoPrint, check if there's a file loaded with a valid upload timestamp
+            // When no file is loaded, file_uploaded will be null/undefined (shows as "unknown" in UI)
+            shouldShowReprint = status.file && status.file.trim() !== '' && status.file_uploaded;
+        }
+        
         switch (state) {
             case 'idle':
             case 'standby':
+                moveBtn.style.display = 'inline-flex';
+                break;
+            
             case 'operational':  // OctoPrint's ready state
                 moveBtn.style.display = 'inline-flex';
+                if (shouldShowReprint) {
+                    reprintBtn.style.display = 'inline-flex';
+                }
                 break;
             
             case 'cancelled':    // Show both move and reprint when cancelled
                 moveBtn.style.display = 'inline-flex';
-                reprintBtn.style.display = 'inline-flex';
+                if (shouldShowReprint) {
+                    reprintBtn.style.display = 'inline-flex';
+                }
                 break;
             
             case 'printing':
@@ -564,8 +586,10 @@ class PrintFarmDashboard {
             
             case 'complete':
             case 'finished':
-                reprintBtn.style.display = 'inline-flex';
                 moveBtn.style.display = 'inline-flex';
+                if (shouldShowReprint) {
+                    reprintBtn.style.display = 'inline-flex';
+                }
                 break;
         }
         
@@ -576,8 +600,13 @@ class PrintFarmDashboard {
         moveBtn.onclick = () => this.showMovementModal(printerName);
         reprintBtn.onclick = async () => {
             const lastFile = this.lastPrintFile.get(printerName);
-            console.log(`Attempting to reprint file for ${printerName}:`, lastFile);
-            if (!lastFile) {
+            const printerData = this.printers.get(printerName);
+            const printerType = printerData?.config?.type || 'klipper';
+            
+            console.log(`Attempting to reprint file for ${printerName}:`, lastFile, `(${printerType})`);
+            
+            // For Klipper, we need to track the last file. For OctoPrint, it gets it from job status
+            if (printerType === 'klipper' && !lastFile) {
                 this.showNotification('No previous print file found', 'error');
                 return;
             }
@@ -589,7 +618,11 @@ class PrintFarmDashboard {
             const confirmBtn = document.getElementById('modal-confirm');
 
             title.textContent = 'Restart Print';
-            message.textContent = `Are you sure you want to restart printing "${lastFile}" on "${printerName}"?`;
+            if (printerType === 'klipper' && lastFile) {
+                message.textContent = `Are you sure you want to restart printing "${lastFile}" on "${printerName}"?`;
+            } else {
+                message.textContent = `Are you sure you want to restart the last print on "${printerName}"?`;
+            }
             confirmBtn.textContent = 'Restart Print';
 
             // Show the modal
@@ -599,15 +632,19 @@ class PrintFarmDashboard {
             const handleConfirm = async () => {
                 modal.style.display = 'none';
                 try {
+                    // Prepare request body - only include filename for Klipper
+                    const requestBody = {};
+                    if (printerType === 'klipper' && lastFile) {
+                        requestBody.filename = lastFile;
+                    }
+                    
                     // Use the reprint action endpoint that matches our backend API
                     const response = await fetch(`api/printer/${printerName}/print/reprint`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({
-                            filename: lastFile
-                        })
+                        body: JSON.stringify(requestBody)
                     });
 
                     const result = await response.json();
@@ -615,7 +652,8 @@ class PrintFarmDashboard {
                         throw new Error(result.error || 'Failed to start print');
                     }
 
-                    this.showNotification(`Started reprinting ${lastFile}`, 'success');
+                    const fileName = lastFile || 'last file';
+                    this.showNotification(`Started reprinting ${fileName}`, 'success');
                     // Refresh status after a short delay
                     setTimeout(() => this.updateAllStatus(), 2000);
                 } catch (error) {

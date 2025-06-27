@@ -536,6 +536,14 @@ class OctoPrintAPI(PrinterAPI):
             progress = job_status.get('progress', {}) if isinstance(job_status, dict) else {}
             state = printer_status.get('state', {}) if isinstance(printer_status, dict) else {}
             
+            # Parse position data from main printer endpoint
+            position_data = printer_status.get('position', {}) if isinstance(printer_status, dict) else {}
+            position = {
+                'x': safe_round(position_data.get('x', 0), 2),
+                'y': safe_round(position_data.get('y', 0), 2),
+                'z': safe_round(position_data.get('z', 0), 2)
+            }
+            
             # Calculate remaining time
             remaining = progress.get('printTimeLeft') or 0
             remaining_formatted = self._format_time(remaining) if remaining else "Unknown"
@@ -547,6 +555,7 @@ class OctoPrintAPI(PrinterAPI):
                 'state': state.get('text', 'unknown').lower() if isinstance(state, dict) else 'unknown',
                 'progress': safe_round(progress.get('completion', 0)),
                 'file': job.get('file', {}).get('name', '') if isinstance(job, dict) else '',
+                'file_uploaded': job.get('file', {}).get('date', None) if isinstance(job, dict) else None,
                 'print_time': self._format_time(progress.get('printTime', 0) or 0),
                 'remaining_time': remaining_formatted,
                 'extruder_temp': {
@@ -557,7 +566,7 @@ class OctoPrintAPI(PrinterAPI):
                     'actual': safe_round(bed.get('actual', 0)),
                     'target': safe_round(bed.get('target', 0))
                 },
-                'position': state.get('position', {'x': 0, 'y': 0, 'z': 0}) if isinstance(state, dict) else {'x':0,'y':0,'z':0},
+                'position': position,
                 'message': state.get('text', '') if isinstance(state, dict) else '',
                 'ready': state.get('flags', {}).get('ready', False) if isinstance(state, dict) else False
             }
@@ -621,6 +630,43 @@ class OctoPrintAPI(PrinterAPI):
             axis: distance
         }
         return self._make_request('api/printer/printhead', method='POST', data=command_data)
+    
+    def reprint(self):
+        """Reprint the last completed file using OctoPrint's API"""
+        try:
+            # Get current job information to find the last printed file
+            job_status = self._make_request('api/job')
+            if not job_status:
+                return {'success': False, 'error': 'Could not get job information'}
+            
+            # Check if there's a current or recent job
+            job = job_status.get('job', {})
+            file_info = job.get('file', {})
+            filename = file_info.get('name', '')
+            
+            if not filename:
+                return {'success': False, 'error': 'No file found to reprint'}
+            
+            # Get file path for OctoPrint (usually in format "path/filename.gcode")
+            file_path = file_info.get('path', filename)
+            
+            logger.info(f"Attempting to reprint file: {file_path}")
+            
+            # Start the print using OctoPrint's API
+            response = self._make_request('api/files/local/' + file_path.replace('/', '%2F'), 
+                                        method='POST', 
+                                        data={'command': 'select', 'print': True})
+            
+            # Log the full response for debugging
+            logger.info(f"OctoPrint reprint response: {response}")
+            
+            # OctoPrint typically returns 204 (no content) on success for this operation
+            # If we get here without an exception, consider it successful
+            return {'success': True}
+                
+        except Exception as e:
+            logger.error(f"Error during reprint: {str(e)}")
+            return {'success': False, 'error': str(e)}
 
 class PrinterManager:
     """Manages multiple printer connections and status updates"""

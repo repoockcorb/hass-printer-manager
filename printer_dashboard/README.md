@@ -1,3 +1,5 @@
+![HAFarm3D Logo](printer_dashboard/static/HAFarm3D.png)
+
 # Print Farm Dashboard
 
 Advanced print farm management with direct Moonraker and OctoPrint API integration, now with Home Assistant camera support!

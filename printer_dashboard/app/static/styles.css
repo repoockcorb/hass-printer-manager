@@ -65,6 +65,15 @@ body {
     color: #34d399;
 }
 
+/* Logo Styles */
+.app-logo {
+    height: 36px;
+    width: auto;
+    max-width: 150px;
+    object-fit: contain;
+    margin-right: 0.5rem;
+}
+
 /* Status Summary */
 .status-summary {
     display: flex;
