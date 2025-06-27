@@ -2153,4 +2153,6 @@ def delete_gcode_file(filename):
 
 if __name__ == '__main__':
     logger.info("Starting Print Farm Dashboard Flask app...")
-    app.run(host='127.0.0.1', port=5001, debug=False) 
+    from waitress import serve
+    logger.info("Using Waitress production WSGI server")
+    serve(app, host='127.0.0.1', port=5001, threads=6) 
