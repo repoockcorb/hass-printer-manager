@@ -1887,30 +1887,22 @@ class PrintFarmDashboard {
 
         // Add printer type to modal for different styling
         const printer = this.printers.get(printerName);
-        console.log('Printer data:', printer); // Debug log
         if (printer && printer.status && printer.status.type) {
             const printerType = printer.status.type.toLowerCase();
-            console.log('Setting printer type:', printerType); // Debug log
             modal.setAttribute('data-printer-type', printerType);
-        } else {
-            console.log('No printer type found in data'); // Debug log
         }
 
-        const tryUrls=[
-            `files/thumbnail?filename=${encodeURIComponent(fileName)}`,
-            `api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(fileName)}`
-        ];
+        // Only use printer API for thumbnails (Moonraker WebSocket/HTTP or OctoPrint API)
+        const thumbnailUrl = `api/thumbnail/${encodeURIComponent(printerName)}?file=${encodeURIComponent(fileName)}`;
 
-        const fetchThumbnail=(urls)=>{
-            if(!urls.length){throw new Error('no thumb');}
-            const url=urls.shift();
-            return fetch(url).then(r=>{
-               if(r.ok) return r.blob();
-               return fetchThumbnail(urls);
-            });
-        };
-
-        fetchThumbnail(tryUrls)
+        fetch(thumbnailUrl)
+            .then(response => {
+                if (response.ok) {
+                    return response.blob();
+                } else {
+                    throw new Error('Thumbnail not available');
+                }
+            })
             .then(blob=>{
                 const url=URL.createObjectURL(blob);
                 img.src=url;
