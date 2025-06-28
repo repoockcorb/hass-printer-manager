@@ -1,6 +1,6 @@
 name: "Print Farm Dashboard"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "4.3.0"
+version: "4.3.1"
 slug: "printer_dashboard"
 init: false
 arch:
@@ -13,7 +13,7 @@ startup: application
 boot: auto
 ingress: true
 ingress_port: 5000
-panel_icon: mdi:printer-3d-nozzle
+panel_icon: /api/hassio_ingress/self/static/HAFarm3D.png
 panel_title: "Print Farm Dashboard"
 hassio_api: true
 homeassistant_api: true
