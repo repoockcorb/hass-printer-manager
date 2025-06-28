@@ -243,6 +243,7 @@ class KlipperAPI(PrinterAPI):
             # First, get list of available objects to detect chamber sensors
             objects_list = self._make_request('printer/objects/list')
             chamber_sensors = []
+            chamber_sensor_types = {}  # Store sensor type for each chamber sensor
             if objects_list and 'result' in objects_list:
                 available_objects = objects_list.get('result', {}).get('objects', [])
                 for obj in available_objects:
@@ -251,6 +252,13 @@ class KlipperAPI(PrinterAPI):
                        ('temperature_fan' in obj and 'chamber' in obj.lower()) or \
                        ('heater_generic' in obj and 'chamber' in obj.lower()):
                         chamber_sensors.append(obj)
+                        # Store the sensor type for later use in temperature setting
+                        if 'temperature_sensor' in obj:
+                            chamber_sensor_types[obj] = 'temperature_sensor'
+                        elif 'temperature_fan' in obj:
+                            chamber_sensor_types[obj] = 'temperature_fan'
+                        elif 'heater_generic' in obj:
+                            chamber_sensor_types[obj] = 'heater_generic'
             
             # Build query string with chamber sensors
             query_params = 'print_stats&toolhead&extruder&heater_bed&display_status&virtual_sdcard&webhooks'
@@ -338,6 +346,9 @@ class KlipperAPI(PrinterAPI):
             else:
                 state = print_stats.get('state', 'ready')
             
+            # Store chamber sensor types for temperature setting
+            self.chamber_sensor_types = chamber_sensor_types
+            
             # Process chamber temperature sensors
             chamber_temps = []
             for sensor in chamber_sensors:
@@ -347,6 +358,8 @@ class KlipperAPI(PrinterAPI):
                     friendly_name = sensor.replace('temperature_sensor ', '').replace('temperature_fan ', '').replace('heater_generic ', '').replace('_', ' ').title()
                     chamber_temps.append({
                         'name': friendly_name,
+                        'sensor_id': sensor,  # Store original sensor ID for temperature setting
+                        'sensor_type': chamber_sensor_types.get(sensor, 'unknown'),
                         'actual': round(sensor_data.get('temperature', 0), 1),
                         'target': round(sensor_data.get('target', 0), 1) if 'target' in sensor_data else None
                     })
@@ -548,7 +561,7 @@ class KlipperAPI(PrinterAPI):
             return {'success': False, 'error': 'Jog command failed or timed out'}
     
     def set_temperature(self, heater_type, temperature, heater_name=None):
-        """Set temperature for extruder, bed, or chamber heater"""
+        """Set temperature for extruder, bed, or chamber heater/fan"""
         try:
             temp = float(temperature)
             if temp < 0:
@@ -564,8 +577,11 @@ class KlipperAPI(PrinterAPI):
                 # Set bed temperature
                 gcode = f'M140 S{temp}'
             elif heater_type == 'chamber' and heater_name:
-                # Set chamber heater temperature (requires heater name)
-                gcode = f'SET_HEATER_TEMPERATURE HEATER={heater_name} TARGET={temp}'
+                # Dynamically determine chamber sensor type and use appropriate command
+                sensor_type = self._get_chamber_sensor_type(heater_name)
+                gcode = self._get_chamber_temperature_command(heater_name, temp, sensor_type)
+                if not gcode:
+                    return {'success': False, 'error': f'Unsupported chamber sensor type: {sensor_type}'}
             else:
                 return {'success': False, 'error': 'Invalid heater type or missing heater name'}
             
@@ -580,6 +596,71 @@ class KlipperAPI(PrinterAPI):
         except Exception as e:
             logger.error(f"Error setting temperature: {e}")
             return {'success': False, 'error': str(e)}
+    
+    def _get_chamber_sensor_type(self, heater_name):
+        """Get the sensor type for a chamber heater by name"""
+        if not hasattr(self, 'chamber_sensor_types'):
+            return 'unknown'
+            
+        # Find sensor by matching the friendly name to the original sensor ID
+        for sensor_id, sensor_type in self.chamber_sensor_types.items():
+            # Extract friendly name from sensor ID
+            friendly_name = sensor_id.replace('temperature_sensor ', '').replace('temperature_fan ', '').replace('heater_generic ', '').replace('_', ' ').title()
+            if friendly_name.lower() == heater_name.lower():
+                return sensor_type
+        
+        # If no exact match, try to find by partial match or original sensor name
+        heater_lower = heater_name.lower().replace(' ', '_')
+        for sensor_id, sensor_type in self.chamber_sensor_types.items():
+            if heater_lower in sensor_id.lower():
+                return sensor_type
+                
+        return 'unknown'
+    
+    def _get_chamber_temperature_command(self, heater_name, temperature, sensor_type):
+        """Generate the appropriate G-code command for chamber temperature setting"""
+        # Find the actual sensor ID from chamber_sensor_types
+        actual_sensor_id = None
+        if hasattr(self, 'chamber_sensor_types'):
+            for sensor_id, s_type in self.chamber_sensor_types.items():
+                # Extract friendly name from sensor ID
+                friendly_name = sensor_id.replace('temperature_sensor ', '').replace('temperature_fan ', '').replace('heater_generic ', '').replace('_', ' ').title()
+                if friendly_name.lower() == heater_name.lower():
+                    actual_sensor_id = sensor_id
+                    break
+            
+            # If no exact match, try partial match
+            if not actual_sensor_id:
+                heater_lower = heater_name.lower().replace(' ', '_')
+                for sensor_id, s_type in self.chamber_sensor_types.items():
+                    if heater_lower in sensor_id.lower():
+                        actual_sensor_id = sensor_id
+                        break
+        
+        # Fallback to converted name if we can't find the actual sensor ID
+        if not actual_sensor_id:
+            sensor_name = heater_name.lower().replace(' ', '_')
+        else:
+            # Extract just the sensor name part (without the prefix)
+            if 'temperature_fan' in actual_sensor_id:
+                sensor_name = actual_sensor_id.replace('temperature_fan ', '')
+            elif 'heater_generic' in actual_sensor_id:
+                sensor_name = actual_sensor_id.replace('heater_generic ', '')
+            else:
+                sensor_name = heater_name.lower().replace(' ', '_')
+        
+        if sensor_type == 'temperature_fan':
+            # For temperature fans, use SET_TEMPERATURE_FAN_TARGET
+            return f'SET_TEMPERATURE_FAN_TARGET temperature_fan={sensor_name} target={temperature}'
+        elif sensor_type == 'heater_generic':
+            # For generic heaters, use SET_HEATER_TEMPERATURE
+            return f'SET_HEATER_TEMPERATURE HEATER={sensor_name} TARGET={temperature}'
+        elif sensor_type == 'temperature_sensor':
+            # Temperature sensors are read-only, cannot set temperature
+            return None
+        else:
+            # Unknown sensor type
+            return None
 
 
 class KlipperWebSocketAPI(KlipperAPI):

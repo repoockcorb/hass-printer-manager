@@ -253,8 +253,8 @@ class PrintFarmDashboard {
         // Close menu when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.side-menu') && !e.target.closest('.menu-toggle')) {
-                sideMenu.classList.remove('show');
-                menuOverlay.classList.remove('show');
+                document.querySelector('.side-menu').classList.remove('show');
+                document.querySelector('.menu-overlay').style.display = 'none';
                 document.body.style.overflow = '';
             }
         });
@@ -565,24 +565,27 @@ class PrintFarmDashboard {
         if (status.chamber_temps && status.chamber_temps.length > 0) {
             status.chamber_temps.forEach(chamberTemp => {
                 const chamberItem = document.createElement('div');
-                chamberItem.className = 'temp-item chamber-temp';
+                const isReadOnly = chamberTemp.sensor_type === 'temperature_sensor';
+                chamberItem.className = `temp-item chamber-temp ${isReadOnly ? 'temp-readonly' : 'temp-clickable'}`;
                 
                 const targetDisplay = chamberTemp.target !== null && chamberTemp.target !== undefined ? 
                     `<span class="temp-separator">/</span><span class="temp-target">${chamberTemp.target}°</span>` : '';
                 
                 chamberItem.innerHTML = `
                     <i class="fas fa-cube chamber-icon"></i>
-                    <span class="temp-label">${chamberTemp.name}</span>
+                    <span class="temp-label">${chamberTemp.name}${isReadOnly ? ' (Monitor)' : ''}</span>
                     <span class="temp-values">
                         <span class="temp-actual">${chamberTemp.actual}°</span>
                         ${targetDisplay}
                     </span>
                 `;
                 
-                // Add click handler for chamber temperature
-                chamberItem.addEventListener('click', () => {
-                    this.showTemperatureModal(printerName, 'chamber', chamberTemp.name, chamberTemp.actual, chamberTemp.target || 0);
-                });
+                // Add click handler only for controllable chamber temperatures
+                if (!isReadOnly) {
+                    chamberItem.addEventListener('click', () => {
+                        this.showTemperatureModal(printerName, 'chamber', chamberTemp.name, chamberTemp.actual, chamberTemp.target || 0, chamberTemp.sensor_type);
+                    });
+                }
                 
                 tempGroup.appendChild(chamberItem);
             });
@@ -2027,7 +2030,7 @@ class PrintFarmDashboard {
     }
 
     /* ---------------- Temperature Control ---------------- */
-    showTemperatureModal(printerName, heaterType, heaterName, currentTemp, targetTemp) {
+    showTemperatureModal(printerName, heaterType, heaterName, currentTemp, targetTemp, sensorType = null) {
         const modal = document.getElementById('temperature-modal');
         const heaterNameEl = document.getElementById('temp-heater-name');
         const currentTempEl = document.getElementById('temp-current');
@@ -2038,7 +2041,8 @@ class PrintFarmDashboard {
         this.tempModalContext = {
             printerName,
             heaterType,
-            heaterName
+            heaterName,
+            sensorType
         };
         
         // Update modal content
@@ -2138,7 +2142,13 @@ class PrintFarmDashboard {
             return;
         }
         
-        const { printerName, heaterType, heaterName } = this.tempModalContext;
+        const { printerName, heaterType, heaterName, sensorType } = this.tempModalContext;
+        
+        // Check if this is a read-only sensor
+        if (sensorType === 'temperature_sensor') {
+            this.showNotification('This is a temperature monitor only - cannot set temperature', 'error');
+            return;
+        }
         
         try {
             const requestBody = {
