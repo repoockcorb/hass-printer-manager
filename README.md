@@ -122,6 +122,8 @@ The add-on exposes several API endpoints:
 - `GET /api/status` - Get status for all printers  
 - `GET /api/status/<printer_name>` - Get status for specific printer
 - `POST /api/control/<printer_name>/<action>` - Control printer (pause/resume/cancel)
+- `POST /api/printer/<printer_name>/temperature` - Set printer temperatures
+- `GET /api/temperature-presets` - Get configured temperature presets
 - `GET /api/health` - Health check endpoint
 
 ## Supported Printer States
@@ -189,6 +191,19 @@ For issues and support:
 3. Create an issue with logs and configuration details
 
 ## Changelog
+
+### Version 4.3.0
+- **Temperature Control**: Click any temperature display to set target temperatures
+- **Configurable Temperature Presets**: Add custom temperature presets via Home Assistant add-on configuration
+- **Chamber Temperature Support**: Automatic detection and display of chamber temperature sensors
+- **Enhanced Configuration UI**: Temperature presets now configurable through Home Assistant add-on manager
+- **Improved Documentation**: Comprehensive configuration guide and examples
+
+### Version 4.2.x
+- WebSocket support for Klipper printers
+- Enhanced thumbnail support
+- Production server deployment
+- Bug fixes and stability improvements
 
 ### Version 2.0.0
 - Complete rewrite with direct API integration
