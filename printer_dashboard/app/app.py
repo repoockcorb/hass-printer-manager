@@ -239,7 +239,25 @@ class KlipperAPI(PrinterAPI):
         try:
             # Get printer status
             printer_info = self._make_request('printer/info')
-            printer_objects = self._make_request('printer/objects/query?print_stats&toolhead&extruder&heater_bed&display_status&virtual_sdcard&webhooks')
+            
+            # First, get list of available objects to detect chamber sensors
+            objects_list = self._make_request('printer/objects/list')
+            chamber_sensors = []
+            if objects_list and 'result' in objects_list:
+                available_objects = objects_list.get('result', {}).get('objects', [])
+                for obj in available_objects:
+                    # Look for various chamber temperature sensor patterns
+                    if ('temperature_sensor' in obj and 'chamber' in obj.lower()) or \
+                       ('temperature_fan' in obj and 'chamber' in obj.lower()) or \
+                       ('heater_generic' in obj and 'chamber' in obj.lower()):
+                        chamber_sensors.append(obj)
+            
+            # Build query string with chamber sensors
+            query_params = 'print_stats&toolhead&extruder&heater_bed&display_status&virtual_sdcard&webhooks'
+            for sensor in chamber_sensors:
+                query_params += f'&{sensor.replace(" ", "%20")}'
+            
+            printer_objects = self._make_request(f'printer/objects/query?{query_params}')
             print_stats_direct = self._make_request('printer/print_stats')  # Direct print stats for accurate progress
             job_queue = self._make_request('server/job_queue/status')
             
@@ -320,7 +338,20 @@ class KlipperAPI(PrinterAPI):
             else:
                 state = print_stats.get('state', 'ready')
             
-            return {
+            # Process chamber temperature sensors
+            chamber_temps = []
+            for sensor in chamber_sensors:
+                sensor_data = status_data.get(sensor, {})
+                if sensor_data and 'temperature' in sensor_data:
+                    # Extract a friendly name from the sensor name
+                    friendly_name = sensor.replace('temperature_sensor ', '').replace('temperature_fan ', '').replace('heater_generic ', '').replace('_', ' ').title()
+                    chamber_temps.append({
+                        'name': friendly_name,
+                        'actual': round(sensor_data.get('temperature', 0), 1),
+                        'target': round(sensor_data.get('target', 0), 1) if 'target' in sensor_data else None
+                    })
+            
+            result = {
                 'name': self.name,
                 'type': 'klipper',
                 'online': True,
@@ -346,6 +377,12 @@ class KlipperAPI(PrinterAPI):
                 'klippy_state': webhooks.get('state', 'unknown'),
                 'queue_status': job_queue.get('result', {}).get('queued_jobs', []) if job_queue else []
             }
+            
+            # Add chamber temperatures if any were found
+            if chamber_temps:
+                result['chamber_temps'] = chamber_temps
+                
+            return result
             
         except Exception as e:
             logger.error(f"Error getting Klipper status for {self.name}: {e}")
@@ -509,6 +546,40 @@ class KlipperAPI(PrinterAPI):
         else:
             logger.error(f"{self.name} jog command failed or timed out")
             return {'success': False, 'error': 'Jog command failed or timed out'}
+    
+    def set_temperature(self, heater_type, temperature, heater_name=None):
+        """Set temperature for extruder, bed, or chamber heater"""
+        try:
+            temp = float(temperature)
+            if temp < 0:
+                temp = 0
+        except (ValueError, TypeError):
+            return {'success': False, 'error': 'Invalid temperature value'}
+        
+        try:
+            if heater_type == 'extruder':
+                # Set extruder temperature
+                gcode = f'M104 S{temp}'
+            elif heater_type == 'bed':
+                # Set bed temperature
+                gcode = f'M140 S{temp}'
+            elif heater_type == 'chamber' and heater_name:
+                # Set chamber heater temperature (requires heater name)
+                gcode = f'SET_HEATER_TEMPERATURE HEATER={heater_name} TARGET={temp}'
+            else:
+                return {'success': False, 'error': 'Invalid heater type or missing heater name'}
+            
+            logger.info(f"{self.name} setting {heater_type} temperature to {temp}°C: {gcode}")
+            result = self._send_gcode(gcode, timeout=10)
+            
+            if result is not None:
+                return {'success': True, 'message': f'{heater_type.title()} temperature set to {temp}°C'}
+            else:
+                return {'success': False, 'error': 'Failed to set temperature'}
+                
+        except Exception as e:
+            logger.error(f"Error setting temperature: {e}")
+            return {'success': False, 'error': str(e)}
 
 
 class KlipperWebSocketAPI(KlipperAPI):
@@ -695,16 +766,29 @@ class OctoPrintAPI(PrinterAPI):
             if job_status is None:
                 job_status = {}
             
-            # Parse temperature data safely
-            temps = printer_status.get('temperature', {}) if isinstance(printer_status, dict) else {}
-            tool0 = temps.get('tool0', {})
-            bed = temps.get('bed', {})
-            
+            # Define safe_round function first
             def safe_round(value, digits=1):
                 try:
                     return round(float(value), digits)
                 except (TypeError, ValueError):
                     return 0
+            
+            # Parse temperature data safely
+            temps = printer_status.get('temperature', {}) if isinstance(printer_status, dict) else {}
+            tool0 = temps.get('tool0', {})
+            bed = temps.get('bed', {})
+            
+            # Look for chamber temperature sensors in OctoPrint
+            chamber_temps = []
+            for key, temp_data in temps.items():
+                if 'chamber' in key.lower() and isinstance(temp_data, dict) and 'actual' in temp_data:
+                    # Extract friendly name
+                    friendly_name = key.replace('_', ' ').title()
+                    chamber_temps.append({
+                        'name': friendly_name,
+                        'actual': safe_round(temp_data.get('actual', 0)),
+                        'target': safe_round(temp_data.get('target', 0)) if temp_data.get('target') is not None else None
+                    })
             
             # Parse job data
             job = job_status.get('job', {}) if isinstance(job_status, dict) else {}
@@ -723,7 +807,7 @@ class OctoPrintAPI(PrinterAPI):
             remaining = progress.get('printTimeLeft') or 0
             remaining_formatted = self._format_time(remaining) if remaining else "Unknown"
             
-            return {
+            result = {
                 'name': self.name,
                 'type': 'octoprint',
                 'online': True,
@@ -745,6 +829,12 @@ class OctoPrintAPI(PrinterAPI):
                 'message': state.get('text', '') if isinstance(state, dict) else '',
                 'ready': state.get('flags', {}).get('ready', False) if isinstance(state, dict) else False
             }
+            
+            # Add chamber temperatures if any were found
+            if chamber_temps:
+                result['chamber_temps'] = chamber_temps
+                
+            return result
             
         except Exception as e:
             logger.error(f"Error getting OctoPrint status for {self.name}: {e}")
@@ -842,6 +932,44 @@ class OctoPrintAPI(PrinterAPI):
         except Exception as e:
             logger.error(f"Error during reprint: {str(e)}")
             return {'success': False, 'error': str(e)}
+    
+    def set_temperature(self, heater_type, temperature, heater_name=None):
+        """Set temperature for extruder, bed, or chamber heater"""
+        try:
+            temp = float(temperature)
+            if temp < 0:
+                temp = 0
+        except (ValueError, TypeError):
+            return {'success': False, 'error': 'Invalid temperature value'}
+        
+        try:
+            if heater_type == 'extruder':
+                # Set extruder temperature
+                data = {'command': 'target', 'targets': {'tool0': temp}}
+                response = self._make_request('api/printer/tool', method='POST', data=data)
+            elif heater_type == 'bed':
+                # Set bed temperature
+                data = {'command': 'target', 'target': temp}
+                response = self._make_request('api/printer/bed', method='POST', data=data)
+            elif heater_type == 'chamber':
+                # For OctoPrint chamber heaters, we need to use G-code commands
+                # This assumes the chamber heater responds to M141 (chamber temperature)
+                data = {'command': f'M141 S{temp}'}
+                response = self._make_request('api/printer/command', method='POST', data=data)
+            else:
+                return {'success': False, 'error': 'Invalid heater type'}
+            
+            logger.info(f"{self.name} setting {heater_type} temperature to {temp}°C")
+            
+            # OctoPrint typically returns 204 (no content) on success
+            if response is not None or hasattr(response, 'status_code'):
+                return {'success': True, 'message': f'{heater_type.title()} temperature set to {temp}°C'}
+            else:
+                return {'success': False, 'error': 'Failed to set temperature'}
+                
+        except Exception as e:
+            logger.error(f"Error setting temperature: {e}")
+            return {'success': False, 'error': str(e)}
 
 class PrinterManager:
     """Manages multiple printer connections and status updates"""
@@ -937,6 +1065,13 @@ class PrinterManager:
                 if not axis or distance is None:
                     return {'success': False, 'error': 'Missing axis or distance for jog command'}
                 result = printer.jog_printer(axis, distance)
+            elif action == 'set_temperature':
+                heater_type = kwargs.get('heater_type')
+                temperature = kwargs.get('temperature')
+                heater_name = kwargs.get('heater_name')
+                if not heater_type or temperature is None:
+                    return {'success': False, 'error': 'Missing heater_type or temperature for temperature command'}
+                result = printer.set_temperature(heater_type, temperature, heater_name)
             else:
                 return {'success': False, 'error': 'Invalid action'}
                 
@@ -989,6 +1124,45 @@ class PrinterStorage:
         except Exception as e:
             logger.error(f"Error loading printers: {e}")
             return []
+    
+    def get_temperature_presets(self):
+        """Load temperature presets from configuration file"""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    
+                    # Default presets
+                    default_presets = {
+                        'extruder': [0, 200, 220, 250],
+                        'bed': [0, 60, 80, 100],
+                        'chamber': [0, 40, 60, 80]
+                    }
+                    
+                    # Get custom presets from config, fallback to defaults
+                    presets = config.get('temperature_presets', default_presets)
+                    
+                    # Ensure all heater types have presets
+                    for heater_type in default_presets:
+                        if heater_type not in presets:
+                            presets[heater_type] = default_presets[heater_type]
+                    
+                    logger.info(f"Loaded temperature presets: {presets}")
+                    return presets
+            else:
+                logger.warning(f"Config file {self.config_file} does not exist, using default presets")
+                return {
+                    'extruder': [0, 200, 220, 250],
+                    'bed': [0, 60, 80, 100],
+                    'chamber': [0, 40, 60, 80]
+                }
+        except Exception as e:
+            logger.error(f"Error loading temperature presets: {e}")
+            return {
+                'extruder': [0, 200, 220, 250],
+                'bed': [0, 60, 80, 100],
+                'chamber': [0, 40, 60, 80]
+            }
 
 # Initialize storage
 storage = PrinterStorage()
@@ -1248,6 +1422,41 @@ def printer_print_control(printer_name, action):
         logger.error(f"Error controlling print on {printer_name}: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/printer/<printer_name>/temperature', methods=['POST'])
+def set_printer_temperature(printer_name):
+    """Set temperature for extruder, bed, or chamber"""
+    try:
+        data = request.get_json() or {}
+        heater_type = data.get('heater_type')
+        temperature = data.get('temperature')
+        heater_name = data.get('heater_name')  # For chamber heaters that need specific heater names
+        
+        if not heater_type or temperature is None:
+            return jsonify({'success': False, 'error': 'Missing heater_type or temperature'}), 400
+        
+        logger.info(f"Temperature control request: {printer_name} -> {heater_type} = {temperature}°C")
+        
+        result = printer_manager.control_printer(printer_name, 'set_temperature', 
+                                               heater_type=heater_type, 
+                                               temperature=temperature,
+                                               heater_name=heater_name)
+        logger.info(f"Temperature control result: {result}")
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error setting temperature: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/temperature-presets')
+def get_temperature_presets():
+    """Get temperature presets from configuration"""
+    try:
+        presets = storage.get_temperature_presets()
+        return jsonify({'success': True, 'presets': presets})
+    except Exception as e:
+        logger.error(f"Error getting temperature presets: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health')

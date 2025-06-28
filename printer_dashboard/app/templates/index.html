@@ -162,7 +162,7 @@
                 <!-- Temperature Section -->
                 <div class="temp-section">
                     <div class="temp-group">
-                        <div class="temp-item">
+                        <div class="temp-item temp-clickable" data-heater-type="extruder">
                             <i class="fas fa-thermometer-half extruder-icon"></i>
                             <span class="temp-label">Extruder</span>
                             <span class="temp-values">
@@ -171,7 +171,7 @@
                                 <span class="temp-target">0°</span>
                             </span>
                         </div>
-                        <div class="temp-item">
+                        <div class="temp-item temp-clickable" data-heater-type="bed">
                             <i class="fas fa-bed bed-icon"></i>
                             <span class="temp-label">Bed</span>
                             <span class="temp-values">
@@ -465,6 +465,36 @@
             <div class="modal-footer">
                 <button id="print-cancel" class="btn btn-secondary">Cancel</button>
                 <button id="print-confirm" class="btn btn-primary">Start Print</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Temperature Control Modal -->
+    <div id="temperature-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="temp-modal-title">Set Temperature</h3>
+                <button class="modal-close temp-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="temp-control-form">
+                    <div class="temp-info">
+                        <p>Heater: <span id="temp-heater-name" style="color: #e0e6ed;"></span></p>
+                        <p>Current: <span id="temp-current" style="color: #e0e6ed;">0°C</span></p>
+                        <p>Target: <span id="temp-target" style="color: #e0e6ed;">0°C</span></p>
+                    </div>
+                    <div class="temp-input-group">
+                        <label for="temp-input">New Target Temperature (°C):</label>
+                        <input type="number" id="temp-input" min="0" max="500" step="1" placeholder="Enter temperature">
+                        <div class="temp-presets" id="temp-presets-container">
+                            <!-- Temperature presets will be loaded dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="temp-cancel" class="btn btn-secondary">Cancel</button>
+                <button id="temp-confirm" class="btn btn-primary">Set Temperature</button>
             </div>
         </div>
     </div>

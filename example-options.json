@@ -1,0 +1,23 @@
+{
+  "printers": [
+    {
+      "name": "Ender 3 V2",
+      "type": "klipper",
+      "url": "http://192.168.1.100:7125",
+      "api_key": "",
+      "camera_entity": "camera.ender3_camera"
+    },
+    {
+      "name": "Prusa MK3S",
+      "type": "octoprint", 
+      "url": "http://192.168.1.101",
+      "api_key": "your-octoprint-api-key-here",
+      "camera_entity": "camera.prusa_camera"
+    }
+  ],
+  "temperature_presets": {
+    "extruder": [0, 180, 200, 215, 220, 230, 250, 260],
+    "bed": [0, 50, 60, 70, 80, 90, 100, 110],
+    "chamber": [0, 35, 40, 45, 50, 60, 70, 80]
+  }
+} 

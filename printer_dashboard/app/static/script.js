@@ -42,6 +42,7 @@ class PrintFarmDashboard {
         this.printPrinter = document.getElementById('print-printer');
 
         this.currentPrintFile = null;
+        this.temperaturePresets = null; // Store temperature presets
 
         this.init();
         this.setupThumbnailModal();
@@ -50,6 +51,7 @@ class PrintFarmDashboard {
     init() {
         this.setupEventListeners();
         this.showLoading();
+        this.loadTemperaturePresets();
         this.loadPrinters();
         this.startAutoUpdate();
     }
@@ -305,6 +307,34 @@ class PrintFarmDashboard {
         });
     }
     
+    async loadTemperaturePresets() {
+        try {
+            const response = await fetch('api/temperature-presets');
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                this.temperaturePresets = data.presets;
+                console.log('Loaded temperature presets:', this.temperaturePresets);
+            } else {
+                // Fallback to default presets
+                this.temperaturePresets = {
+                    'extruder': [0, 200, 220, 250],
+                    'bed': [0, 60, 80, 100],
+                    'chamber': [0, 40, 60, 80]
+                };
+                console.warn('Failed to load temperature presets, using defaults');
+            }
+        } catch (error) {
+            console.error('Error loading temperature presets:', error);
+            // Fallback to default presets
+            this.temperaturePresets = {
+                'extruder': [0, 200, 220, 250],
+                'bed': [0, 60, 80, 100],
+                'chamber': [0, 40, 60, 80]
+            };
+        }
+    }
+
     async loadPrinters() {
         try {
             const response = await fetch('api/printers');
@@ -494,10 +524,18 @@ class PrintFarmDashboard {
             if (thumbBtn) thumbBtn.style.display = 'none';
         }
         
-        // Update temperatures
+        // Update temperatures and add click handlers
         if (status.extruder_temp) {
             card.querySelector('.temp-actual').textContent = `${status.extruder_temp.actual}°`;
             card.querySelector('.temp-target').textContent = `${status.extruder_temp.target}°`;
+            
+            // Add click handler for extruder
+            const extruderItem = card.querySelector('[data-heater-type="extruder"]');
+            if (extruderItem) {
+                extruderItem.onclick = () => {
+                    this.showTemperatureModal(printerName, 'extruder', 'Extruder', status.extruder_temp.actual, status.extruder_temp.target);
+                };
+            }
         }
         
         if (status.bed_temp) {
@@ -505,6 +543,49 @@ class PrintFarmDashboard {
             const bedTarget = card.querySelectorAll('.temp-target')[1];
             if (bedActual) bedActual.textContent = `${status.bed_temp.actual}°`;
             if (bedTarget) bedTarget.textContent = `${status.bed_temp.target}°`;
+            
+            // Add click handler for bed
+            const bedItem = card.querySelector('[data-heater-type="bed"]');
+            if (bedItem) {
+                bedItem.onclick = () => {
+                    this.showTemperatureModal(printerName, 'bed', 'Bed', status.bed_temp.actual, status.bed_temp.target);
+                };
+            }
+        }
+        
+        // Handle chamber temperatures dynamically
+        const tempSection = card.querySelector('.temp-section');
+        const tempGroup = tempSection.querySelector('.temp-group');
+        
+        // Remove any existing chamber temperature items
+        const existingChamberItems = tempGroup.querySelectorAll('.temp-item.chamber-temp');
+        existingChamberItems.forEach(item => item.remove());
+        
+        // Add chamber temperatures if available
+        if (status.chamber_temps && status.chamber_temps.length > 0) {
+            status.chamber_temps.forEach(chamberTemp => {
+                const chamberItem = document.createElement('div');
+                chamberItem.className = 'temp-item chamber-temp';
+                
+                const targetDisplay = chamberTemp.target !== null && chamberTemp.target !== undefined ? 
+                    `<span class="temp-separator">/</span><span class="temp-target">${chamberTemp.target}°</span>` : '';
+                
+                chamberItem.innerHTML = `
+                    <i class="fas fa-cube chamber-icon"></i>
+                    <span class="temp-label">${chamberTemp.name}</span>
+                    <span class="temp-values">
+                        <span class="temp-actual">${chamberTemp.actual}°</span>
+                        ${targetDisplay}
+                    </span>
+                `;
+                
+                // Add click handler for chamber temperature
+                chamberItem.addEventListener('click', () => {
+                    this.showTemperatureModal(printerName, 'chamber', chamberTemp.name, chamberTemp.actual, chamberTemp.target || 0);
+                });
+                
+                tempGroup.appendChild(chamberItem);
+            });
         }
         
         // Update times
@@ -1943,6 +2024,157 @@ class PrintFarmDashboard {
         document.getElementById('printing-count').textContent = printing;
         document.getElementById('idle-count').textContent = idle;
         document.getElementById('error-count').textContent = error;
+    }
+
+    /* ---------------- Temperature Control ---------------- */
+    showTemperatureModal(printerName, heaterType, heaterName, currentTemp, targetTemp) {
+        const modal = document.getElementById('temperature-modal');
+        const heaterNameEl = document.getElementById('temp-heater-name');
+        const currentTempEl = document.getElementById('temp-current');
+        const targetTempEl = document.getElementById('temp-target');
+        const tempInput = document.getElementById('temp-input');
+        
+        // Store current context
+        this.tempModalContext = {
+            printerName,
+            heaterType,
+            heaterName
+        };
+        
+        // Update modal content
+        heaterNameEl.textContent = heaterName;
+        currentTempEl.textContent = `${currentTemp}°C`;
+        targetTempEl.textContent = `${targetTemp}°C`;
+        tempInput.value = targetTemp;
+        
+        // Create dynamic preset buttons
+        this.createTemperaturePresetButtons(heaterType);
+        
+        // Setup event listeners
+        this.setupTemperatureModalEvents();
+        
+        // Show modal
+        modal.style.display = 'flex';
+    }
+    
+    createTemperaturePresetButtons(heaterType) {
+        const container = document.getElementById('temp-presets-container');
+        if (!container || !this.temperaturePresets) return;
+        
+        // Clear existing buttons
+        container.innerHTML = '';
+        
+        // Get presets for this heater type
+        const presets = this.temperaturePresets[heaterType] || [];
+        
+        // Create buttons for each preset
+        presets.forEach(temp => {
+            const button = document.createElement('button');
+            button.className = 'btn btn-secondary temp-preset';
+            button.setAttribute('data-temp', temp);
+            button.textContent = temp === 0 ? 'Off' : `${temp}°C`;
+            
+            // Add click handler
+            button.addEventListener('click', () => {
+                const tempInput = document.getElementById('temp-input');
+                if (tempInput) {
+                    tempInput.value = temp;
+                }
+            });
+            
+            container.appendChild(button);
+        });
+    }
+    
+    setupTemperatureModalEvents() {
+        const modal = document.getElementById('temperature-modal');
+        const closeBtn = modal.querySelector('.temp-modal-close');
+        const cancelBtn = document.getElementById('temp-cancel');
+        const confirmBtn = document.getElementById('temp-confirm');
+        const tempInput = document.getElementById('temp-input');
+        
+        // Remove existing listeners to avoid duplicates
+        const newCloseBtn = closeBtn.cloneNode(true);
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        
+        closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        
+        // Add event listeners
+        newCloseBtn.addEventListener('click', () => this.hideTemperatureModal());
+        newCancelBtn.addEventListener('click', () => this.hideTemperatureModal());
+        newConfirmBtn.addEventListener('click', () => this.setTemperature());
+        
+        // Enter key handler
+        tempInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.setTemperature();
+            }
+        });
+        
+        // Close on backdrop click
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                this.hideTemperatureModal();
+            }
+        });
+    }
+    
+    hideTemperatureModal() {
+        document.getElementById('temperature-modal').style.display = 'none';
+        this.tempModalContext = null;
+    }
+    
+    async setTemperature() {
+        if (!this.tempModalContext) return;
+        
+        const tempInput = document.getElementById('temp-input');
+        const temperature = parseFloat(tempInput.value);
+        
+        if (isNaN(temperature) || temperature < 0) {
+            this.showNotification('Please enter a valid temperature', 'error');
+            return;
+        }
+        
+        const { printerName, heaterType, heaterName } = this.tempModalContext;
+        
+        try {
+            const requestBody = {
+                heater_type: heaterType,
+                temperature: temperature
+            };
+            
+            // For chamber heaters, include the heater name
+            if (heaterType === 'chamber') {
+                requestBody.heater_name = heaterName.toLowerCase().replace(/\s+/g, '_');
+            }
+            
+            const response = await fetch(`api/printer/${printerName}/temperature`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to set temperature');
+            }
+            
+            this.showNotification(`${heaterName} temperature set to ${temperature}°C`, 'success');
+            this.hideTemperatureModal();
+            
+            // Refresh status after a short delay
+            setTimeout(() => this.updateAllStatus(), 2000);
+            
+        } catch (error) {
+            console.error('Temperature control error:', error);
+            this.showNotification(`Failed to set temperature: ${error.message}`, 'error');
+        }
     }
 }
 
