@@ -1,6 +1,6 @@
 name: "Print Farm Dashboard"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "4.2.90"
+version: "4.3.0"
 slug: "printer_dashboard"
 init: false
 arch:
@@ -23,6 +23,10 @@ options:
   home_assistant:
     url: "http://supervisor/core"
     token: ""
+  temperature_presets:
+    extruder: [0, 200, 235, 245]
+    bed: [0, 60, 85, 110]
+    chamber: [0, 45]
 schema:
   printers:
     - name: str
@@ -33,3 +37,7 @@ schema:
   home_assistant:
     url: url?
     token: str?
+  temperature_presets:
+    extruder: [int]
+    bed: [int]
+    chamber: [int]
