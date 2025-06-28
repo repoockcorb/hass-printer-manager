@@ -8,6 +8,9 @@ Advanced print farm management Home Assistant add-on with direct Moonraker and O
 - **Multi-Platform Support**: Works with both Klipper (via Moonraker) and OctoPrint printers
 - **Modern Web Interface**: Beautiful, responsive dashboard with real-time updates
 - **Print Control**: Pause, resume, and cancel prints directly from the dashboard  
+- **Temperature Control**: Click any temperature display to set target temperatures
+- **Custom Temperature Presets**: Configure custom temperature presets for extruder, bed, and chamber
+- **Chamber Temperature Support**: Automatic detection and display of chamber temperature sensors
 - **Comprehensive Status**: View temperatures, progress, positions, and print times
 - **Filtering & Search**: Filter printers by status and type
 - **Auto-refresh**: Configurable auto-refresh with pause when tab is not active
@@ -52,6 +55,11 @@ printers:
   - name: "Voron 2.4"
     type: "klipper"
     url: "http://voron.local"
+
+temperature_presets:
+  extruder: [0, 180, 200, 215, 220, 230, 250]
+  bed: [0, 50, 60, 70, 80, 90, 100]
+  chamber: [0, 35, 40, 45, 50, 60]
 ```
 
 ### Configuration Options
@@ -62,6 +70,17 @@ printers:
 | `type` | string | Yes | Printer type: `klipper` or `octoprint` |
 | `url` | string | Yes | Base URL of the printer (Moonraker or OctoPrint) |
 | `api_key` | string | No | API key for authentication (if required) |
+| `camera_entity` | string | No | Home Assistant camera entity ID |
+
+### Temperature Presets
+
+Configure custom temperature presets for quick access:
+
+| Option | Type | Description | Default |
+|--------|------|-------------|---------|
+| `temperature_presets.extruder` | array | Extruder temperature presets in °C | `[0, 200, 220, 250]` |
+| `temperature_presets.bed` | array | Bed temperature presets in °C | `[0, 60, 80, 100]` |
+| `temperature_presets.chamber` | array | Chamber temperature presets in °C | `[0, 40, 60, 80]` |
 
 ### Klipper/Moonraker Setup
 
