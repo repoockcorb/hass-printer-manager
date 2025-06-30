@@ -1244,6 +1244,22 @@ class PrinterStorage:
                 'bed': [0, 60, 80, 100],
                 'chamber': [0, 40, 60, 80]
             }
+    
+    def get_room_light_entity(self):
+        """Load room light entity from configuration file"""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    light_entity = config.get('room_light_entity', '')
+                    logger.info(f"Loaded room light entity: {light_entity}")
+                    return light_entity
+            else:
+                logger.warning(f"Config file {self.config_file} does not exist")
+                return ''
+        except Exception as e:
+            logger.error(f"Error loading room light entity: {e}")
+            return ''
 
 # Initialize storage
 storage = PrinterStorage()
@@ -1301,7 +1317,7 @@ class HomeAssistantAPI:
         # Fallback: assume standard HA port
         return "http://homeassistant.local:8123"
     
-    def _make_request(self, endpoint, method='GET', timeout=10):
+    def _make_request(self, endpoint, method='GET', data=None, timeout=10):
         """Make HTTP request to Home Assistant API using internal URL"""
         try:
             headers = {
@@ -1313,11 +1329,13 @@ class HomeAssistantAPI:
             url = f"{self.internal_url}/api/{endpoint.lstrip('/')}"
             
             # Add cache-busting parameter for state requests
-            if 'states/' in endpoint:
+            if 'states/' in endpoint and method == 'GET':
                 url += f"?_={int(time.time() * 1000)}"
             
             if method == 'GET':
                 response = requests.get(url, headers=headers, timeout=timeout)
+            elif method == 'POST':
+                response = requests.post(url, headers=headers, json=data, timeout=timeout)
             else:
                 raise ValueError(f"Unsupported method: {method}")
                 
@@ -1538,6 +1556,86 @@ def get_temperature_presets():
         return jsonify({'success': True, 'presets': presets})
     except Exception as e:
         logger.error(f"Error getting temperature presets: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/room-light/status')
+def get_room_light_status():
+    """Get the current status of the configured room light entity"""
+    try:
+        # Get light entity from configuration
+        light_entity = storage.get_room_light_entity()
+        if not light_entity:
+            return jsonify({'success': False, 'error': 'No room light entity configured'}), 400
+        
+        logger.info(f"Getting status for light entity: {light_entity}")
+        
+        # Get light state from Home Assistant
+        entity_state = ha_api._make_request(f'states/{light_entity}')
+        if not entity_state:
+            return jsonify({'success': False, 'error': 'Failed to get light status from Home Assistant'}), 500
+        
+        # Extract light state information
+        state = entity_state.get('state', 'unknown')
+        attributes = entity_state.get('attributes', {})
+        
+        light_status = {
+            'entity_id': light_entity,
+            'state': state,
+            'is_on': state == 'on',
+            'brightness': attributes.get('brightness'),
+            'friendly_name': attributes.get('friendly_name', light_entity),
+            'last_changed': entity_state.get('last_changed'),
+            'last_updated': entity_state.get('last_updated')
+        }
+        
+        logger.info(f"Light status: {light_status}")
+        return jsonify({'success': True, 'light': light_status})
+        
+    except Exception as e:
+        logger.error(f"Error getting room light status: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/room-light/control', methods=['POST'])
+def control_room_light():
+    """Control the configured room light entity (turn on/off)"""
+    try:
+        # Get light entity from configuration
+        light_entity = storage.get_room_light_entity()
+        if not light_entity:
+            return jsonify({'success': False, 'error': 'No room light entity configured'}), 400
+        
+        # Get action from request
+        data = request.get_json() or {}
+        action = data.get('action')  # 'turn_on' or 'turn_off'
+        
+        if action not in ['turn_on', 'turn_off']:
+            return jsonify({'success': False, 'error': 'Invalid action. Use "turn_on" or "turn_off"'}), 400
+        
+        logger.info(f"Controlling light {light_entity}: {action}")
+        
+        # Call Home Assistant service
+        service_data = {
+            'entity_id': light_entity
+        }
+        
+        # Add brightness if turning on and provided
+        if action == 'turn_on' and 'brightness' in data:
+            service_data['brightness'] = data['brightness']
+        
+        # Make service call to Home Assistant
+        service_response = ha_api._make_request(f'services/light/{action}', method='POST', data=service_data)
+        
+        logger.info(f"Light control response: {service_response}")
+        
+        # Return success (Home Assistant typically returns empty response for successful service calls)
+        return jsonify({'success': True, 'action': action, 'entity_id': light_entity})
+        
+    except Exception as e:
+        logger.error(f"Error controlling room light: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health')

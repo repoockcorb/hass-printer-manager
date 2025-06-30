@@ -1098,6 +1098,56 @@ body {
     transform: translateY(-1px);
 }
 
+/* Light Control Button Styles */
+#room-light-btn,
+#mobile-room-light-btn {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #6b7280;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+#room-light-btn.btn-light-on,
+#mobile-room-light-btn.btn-light-on {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+    box-shadow: 0 2px 8px rgba(251, 191, 36, 0.2);
+}
+
+#room-light-btn.btn-light-off,
+#mobile-room-light-btn.btn-light-off {
+    background: rgba(107, 114, 128, 0.1);
+    border-color: rgba(107, 114, 128, 0.3);
+    color: #6b7280;
+}
+
+#room-light-btn:hover,
+#mobile-room-light-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+#room-light-btn.btn-light-on:hover,
+#mobile-room-light-btn.btn-light-on:hover {
+    background: rgba(251, 191, 36, 0.25);
+    box-shadow: 0 4px 16px rgba(251, 191, 36, 0.3);
+}
+
+#room-light-btn.btn-light-off:hover,
+#mobile-room-light-btn.btn-light-off:hover {
+    background: rgba(107, 114, 128, 0.2);
+    color: #9ca3af;
+}
+
+#room-light-btn:disabled,
+#mobile-room-light-btn:disabled {
+    cursor: not-allowed;
+    transform: none;
+    opacity: 0.6 !important;
+}
+
 /* Movement Controls Modal */
 .movement-modal .modal-content {
     max-width: 500px;

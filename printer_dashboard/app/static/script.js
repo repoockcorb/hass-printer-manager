@@ -53,6 +53,7 @@ class PrintFarmDashboard {
         this.showLoading();
         this.loadTemperaturePresets();
         this.loadPrinters();
+        this.loadRoomLightStatus();
         this.startAutoUpdate();
     }
     
@@ -99,6 +100,23 @@ class PrintFarmDashboard {
         document.querySelector('.menu-overlay').addEventListener('click', () => {
             this.closeMobileMenu();
         });
+
+        // Light control buttons
+        const roomLightBtn = document.getElementById('room-light-btn');
+        const mobileRoomLightBtn = document.getElementById('mobile-room-light-btn');
+        
+        if (roomLightBtn) {
+            roomLightBtn.addEventListener('click', () => {
+                this.toggleRoomLight();
+            });
+        }
+        
+        if (mobileRoomLightBtn) {
+            mobileRoomLightBtn.addEventListener('click', () => {
+                this.toggleRoomLight();
+                this.closeMobileMenu();
+            });
+        }
 
         // Mobile buttons
         document.getElementById('mobile-files-btn').addEventListener('click', () => {
@@ -2185,6 +2203,144 @@ class PrintFarmDashboard {
             console.error('Temperature control error:', error);
             this.showNotification(`Failed to set temperature: ${error.message}`, 'error');
         }
+    }
+
+    // Room Light Control Methods
+    async loadRoomLightStatus() {
+        try {
+            const response = await fetch('api/room-light/status');
+            const data = await response.json();
+            
+            if (data.success && data.light) {
+                // Show the light button
+                document.getElementById('room-light-btn').style.display = 'inline-flex';
+                document.getElementById('mobile-room-light-btn').style.display = 'inline-flex';
+                
+                // Update button state
+                this.updateLightButtonState(data.light);
+                
+                console.log('Room light loaded:', data.light);
+            } else {
+                // Hide the light button if no light entity configured
+                document.getElementById('room-light-btn').style.display = 'none';
+                document.getElementById('mobile-room-light-btn').style.display = 'none';
+                console.log('No room light entity configured');
+            }
+        } catch (error) {
+            console.error('Error loading room light status:', error);
+            // Hide button on error
+            document.getElementById('room-light-btn').style.display = 'none';
+            document.getElementById('mobile-room-light-btn').style.display = 'none';
+        }
+    }
+
+    updateLightButtonState(lightData) {
+        const isOn = lightData.is_on;
+        const icons = [
+            document.getElementById('room-light-icon'),
+            document.getElementById('mobile-room-light-icon')
+        ];
+        const buttons = [
+            document.getElementById('room-light-btn'),
+            document.getElementById('mobile-room-light-btn')
+        ];
+
+        icons.forEach(icon => {
+            if (icon) {
+                if (isOn) {
+                    icon.className = 'fas fa-lightbulb';
+                    icon.style.color = '#fbbf24'; // Yellow color for "on"
+                } else {
+                    icon.className = 'far fa-lightbulb';
+                    icon.style.color = '#6b7280'; // Gray color for "off"
+                }
+            }
+        });
+
+        buttons.forEach(button => {
+            if (button) {
+                button.title = `${lightData.friendly_name || 'Room Light'}: ${isOn ? 'ON' : 'OFF'}`;
+                if (isOn) {
+                    button.classList.add('btn-light-on');
+                    button.classList.remove('btn-light-off');
+                } else {
+                    button.classList.add('btn-light-off');
+                    button.classList.remove('btn-light-on');
+                }
+            }
+        });
+    }
+
+    async toggleRoomLight() {
+        try {
+            // First get current status to determine action
+            const statusResponse = await fetch('api/room-light/status');
+            const statusData = await statusResponse.json();
+            
+            if (!statusData.success) {
+                this.showNotification('Unable to get light status', 'error');
+                return;
+            }
+
+            const currentlyOn = statusData.light.is_on;
+            const action = currentlyOn ? 'turn_off' : 'turn_on';
+            
+            // Show loading state
+            this.setLightButtonLoading(true);
+            
+            // Send control command
+            const response = await fetch('api/room-light/control', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ action: action })
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                this.showNotification(`Light ${action === 'turn_on' ? 'turned on' : 'turned off'}`, 'success');
+                // Update the button state immediately for responsiveness
+                const newLightData = {
+                    ...statusData.light,
+                    is_on: action === 'turn_on',
+                    state: action === 'turn_on' ? 'on' : 'off'
+                };
+                this.updateLightButtonState(newLightData);
+                
+                // Refresh status after a short delay
+                setTimeout(() => {
+                    this.loadRoomLightStatus();
+                }, 1000);
+            } else {
+                this.showNotification('Failed to control light: ' + (data.error || 'Unknown error'), 'error');
+            }
+        } catch (error) {
+            console.error('Error controlling room light:', error);
+            this.showNotification('Failed to control light', 'error');
+        } finally {
+            this.setLightButtonLoading(false);
+        }
+    }
+
+    setLightButtonLoading(loading) {
+        const buttons = [
+            document.getElementById('room-light-btn'),
+            document.getElementById('mobile-room-light-btn')
+        ];
+
+        buttons.forEach(button => {
+            if (button) {
+                if (loading) {
+                    button.disabled = true;
+                    button.style.opacity = '0.6';
+                } else {
+                    button.disabled = false;
+                    button.style.opacity = '1';
+                }
+            }
+        });
     }
 }
 

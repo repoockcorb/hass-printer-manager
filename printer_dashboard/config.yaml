@@ -1,6 +1,6 @@
 name: "HAFarm3D (Print Farm Dashboard)"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "4.3.5"
+version: "4.3.6"
 slug: "printer_dashboard"
 init: false
 arch:
@@ -27,6 +27,7 @@ options:
     extruder: [0, 200, 235, 245]
     bed: [0, 60, 85, 110]
     chamber: [0, 45]
+  room_light_entity: ""
 schema:
   printers:
     - name: str
@@ -41,3 +42,4 @@ schema:
     extruder: [int]
     bed: [int]
     chamber: [int]
+  room_light_entity: str?
