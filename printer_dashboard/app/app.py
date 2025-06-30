@@ -1638,6 +1638,52 @@ def control_room_light():
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/debug/light-config')
+def debug_light_config():
+    """Debug endpoint to check light configuration and connectivity"""
+    try:
+        # Get light entity from configuration
+        light_entity = storage.get_room_light_entity()
+        
+        debug_info = {
+            'light_entity': light_entity,
+            'entity_configured': bool(light_entity),
+            'ha_api_url': ha_api.internal_url,
+            'ha_token_available': bool(ha_api.token),
+            'request_info': {
+                'url': request.url,
+                'host': request.host,
+                'method': request.method,
+                'user_agent': request.headers.get('User-Agent', ''),
+                'is_ingress': '/api/hassio_ingress/' in request.url
+            }
+        }
+        
+        # If entity is configured, try to get its status
+        if light_entity:
+            try:
+                entity_state = ha_api._make_request(f'states/{light_entity}')
+                if entity_state:
+                    debug_info['entity_status'] = {
+                        'state': entity_state.get('state'),
+                        'attributes': entity_state.get('attributes', {}),
+                        'last_changed': entity_state.get('last_changed'),
+                        'friendly_name': entity_state.get('attributes', {}).get('friendly_name')
+                    }
+                    debug_info['entity_accessible'] = True
+                else:
+                    debug_info['entity_accessible'] = False
+                    debug_info['entity_error'] = 'Could not retrieve entity state'
+            except Exception as e:
+                debug_info['entity_accessible'] = False
+                debug_info['entity_error'] = str(e)
+        
+        return jsonify(debug_info)
+        
+    except Exception as e:
+        logger.error(f"Error in light debug endpoint: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/health')
 def health_check():
     """Health check endpoint"""

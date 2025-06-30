@@ -1,6 +1,6 @@
 name: "HAFarm3D (Print Farm Dashboard)"
 description: "Advanced print farm management with direct Moonraker and OctoPrint API integration"
-version: "4.3.6"
+version: "4.3.7"
 slug: "printer_dashboard"
 init: false
 arch:

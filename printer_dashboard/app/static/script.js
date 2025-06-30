@@ -1045,6 +1045,16 @@ class PrintFarmDashboard {
     startAutoUpdate() {
         this.updateTimer = setInterval(() => {
             this.updateAllStatus();
+            
+            // Also check light status periodically, especially in ingress mode
+            const lightBtn = document.getElementById('room-light-btn');
+            if (lightBtn && (lightBtn.style.display === 'none' || lightBtn.classList.contains('btn-light-error'))) {
+                const isIngress = window.location.href.includes('/api/hassio_ingress/');
+                if (isIngress) {
+                    console.log('Light control: Periodic retry in ingress mode');
+                    this.loadRoomLightStatus();
+                }
+            }
         }, this.updateInterval);
     }
     
@@ -2208,8 +2218,37 @@ class PrintFarmDashboard {
     // Room Light Control Methods
     async loadRoomLightStatus() {
         try {
+            // Add debugging for ingress routing
+            const currentUrl = window.location.href;
+            const isIngress = currentUrl.includes('/api/hassio_ingress/');
+            console.log('Light control: Loading room light status', {
+                currentUrl,
+                isIngress,
+                baseUrl: window.location.origin,
+                pathname: window.location.pathname
+            });
+            
             const response = await fetch('api/room-light/status');
+            console.log('Light control: API response status:', response.status, response.statusText);
+            
+            if (!response.ok) {
+                console.error('Light control: HTTP error response:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    url: response.url
+                });
+                
+                // For ingress mode, try to show a helpful error
+                if (isIngress && response.status === 404) {
+                    console.warn('Light control: 404 in ingress mode - this might be a routing issue');
+                }
+                
+                // Don't hide button immediately on HTTP errors - might be temporary
+                return;
+            }
+            
             const data = await response.json();
+            console.log('Light control: API response data:', data);
             
             if (data.success && data.light) {
                 // Show the light button
@@ -2219,18 +2258,31 @@ class PrintFarmDashboard {
                 // Update button state
                 this.updateLightButtonState(data.light);
                 
-                console.log('Room light loaded:', data.light);
-            } else {
-                // Hide the light button if no light entity configured
+                console.log('Room light loaded successfully:', data.light);
+            } else if (data.error && data.error.includes('No room light entity configured')) {
+                // Only hide button if specifically no entity configured
                 document.getElementById('room-light-btn').style.display = 'none';
                 document.getElementById('mobile-room-light-btn').style.display = 'none';
                 console.log('No room light entity configured');
+            } else {
+                // For other errors, log but don't hide button
+                console.warn('Light control: Unexpected response:', data);
             }
         } catch (error) {
             console.error('Error loading room light status:', error);
-            // Hide button on error
-            document.getElementById('room-light-btn').style.display = 'none';
-            document.getElementById('mobile-room-light-btn').style.display = 'none';
+            
+            // Check if this is a network error in ingress mode
+            const isIngress = window.location.href.includes('/api/hassio_ingress/');
+            if (isIngress) {
+                console.warn('Light control: Network error in ingress mode - keeping button visible for retry');
+                // In ingress mode, keep button visible but in disabled state
+                this.setLightButtonLoading(false);
+                this.showLightButtonWithError();
+            } else {
+                // Hide button on error for direct access
+                document.getElementById('room-light-btn').style.display = 'none';
+                document.getElementById('mobile-room-light-btn').style.display = 'none';
+            }
         }
     }
 
@@ -2271,19 +2323,69 @@ class PrintFarmDashboard {
         });
     }
 
+    showLightButtonWithError() {
+        // Show the light button in error state for ingress mode
+        document.getElementById('room-light-btn').style.display = 'inline-flex';
+        document.getElementById('mobile-room-light-btn').style.display = 'inline-flex';
+        
+        const icons = [
+            document.getElementById('room-light-icon'),
+            document.getElementById('mobile-room-light-icon')
+        ];
+        const buttons = [
+            document.getElementById('room-light-btn'),
+            document.getElementById('mobile-room-light-btn')
+        ];
+
+        // Set error state styling
+        icons.forEach(icon => {
+            if (icon) {
+                icon.className = 'fas fa-exclamation-triangle';
+                icon.style.color = '#f59e0b'; // Orange color for error
+            }
+        });
+
+        buttons.forEach(button => {
+            if (button) {
+                button.title = 'Room Light: Connection Error (Click to retry)';
+                button.classList.remove('btn-light-on', 'btn-light-off');
+                button.classList.add('btn-light-error');
+            }
+        });
+    }
+
     async toggleRoomLight() {
         try {
+            // Add debugging for ingress mode
+            const currentUrl = window.location.href;
+            const isIngress = currentUrl.includes('/api/hassio_ingress/');
+            console.log('Light control: Toggle request', { isIngress, currentUrl });
+            
             // First get current status to determine action
             const statusResponse = await fetch('api/room-light/status');
+            console.log('Light control: Status response:', statusResponse.status, statusResponse.statusText);
+            
+            if (!statusResponse.ok) {
+                throw new Error(`Failed to get light status: ${statusResponse.status} ${statusResponse.statusText}`);
+            }
+            
             const statusData = await statusResponse.json();
+            console.log('Light control: Status data:', statusData);
             
             if (!statusData.success) {
+                // If in error state, try to reload status first
+                if (document.getElementById('room-light-btn').classList.contains('btn-light-error')) {
+                    console.log('Light control: Retrying status load from error state');
+                    await this.loadRoomLightStatus();
+                    return;
+                }
                 this.showNotification('Unable to get light status', 'error');
                 return;
             }
 
             const currentlyOn = statusData.light.is_on;
             const action = currentlyOn ? 'turn_off' : 'turn_on';
+            console.log('Light control: Current state:', currentlyOn, 'Action:', action);
             
             // Show loading state
             this.setLightButtonLoading(true);

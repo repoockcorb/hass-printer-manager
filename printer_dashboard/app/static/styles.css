@@ -1148,6 +1148,29 @@ body {
     opacity: 0.6 !important;
 }
 
+#room-light-btn.btn-light-error,
+#mobile-room-light-btn.btn-light-error {
+    background: rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #f59e0b;
+    animation: pulse-warning 2s infinite;
+}
+
+#room-light-btn.btn-light-error:hover,
+#mobile-room-light-btn.btn-light-error:hover {
+    background: rgba(245, 158, 11, 0.25);
+    box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+}
+
+@keyframes pulse-warning {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
 /* Movement Controls Modal */
 .movement-modal .modal-content {
     max-width: 500px;
