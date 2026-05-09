@@ -244,6 +244,10 @@
                         <i class="fas fa-arrows-alt"></i>
                         Move
                     </button>
+                    <button class="btn btn-control btn-macros macros-btn" data-action="macros" style="display: none;">
+                        <i class="fas fa-bolt"></i>
+                        Macros
+                    </button>
                 </div>
                 <div class="last-update">
                     Updated: <span class="update-time">Never</span>
@@ -377,6 +381,45 @@
             </div>
             <div class="modal-footer">
                 <button id="movement-close" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Macros Modal -->
+    <div id="macros-modal" class="modal macros-modal" style="display: none;">
+        <div class="modal-content macros-modal-content">
+            <div class="modal-header">
+                <h3 id="macros-modal-title">Macros</h3>
+                <button class="modal-close macros-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="macros-toolbar">
+                    <input type="search" id="macros-filter" class="macros-filter" placeholder="Filter macros..." autocomplete="off" />
+                    <label class="macros-toggle">
+                        <input type="checkbox" id="macros-show-hidden" />
+                        <span>Show hidden (_)</span>
+                    </label>
+                </div>
+                <div id="macros-loading" class="macros-loading">
+                    <div class="spinner"></div>
+                    <p>Loading macros...</p>
+                </div>
+                <div id="macros-error" class="macros-error" style="display:none;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p id="macros-error-text">Unable to load macros.</p>
+                </div>
+                <div id="macros-empty" class="macros-empty" style="display:none;">
+                    <i class="fas fa-bolt"></i>
+                    <p>No macros found on this printer.</p>
+                </div>
+                <div id="macros-list" class="macros-list" style="display:none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="macros-refresh" class="btn btn-secondary">
+                    <i class="fas fa-sync-alt"></i>
+                    Refresh
+                </button>
+                <button id="macros-close" class="btn btn-primary">Close</button>
             </div>
         </div>
     </div>

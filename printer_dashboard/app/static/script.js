@@ -10,7 +10,7 @@ const DIRECT_CONTROL_CONFIG = {
 class PrintFarmDashboard {
     constructor() {
         this.printers = new Map();
-        this.updateInterval = 10000; // 10 seconds
+        this.updateInterval = 5000; // 5 seconds
         this.updateTimer = null;
         this.isUpdating = false;
         this.filters = {
@@ -55,6 +55,16 @@ class PrintFarmDashboard {
         this.loadPrinters();
         this.loadRoomLightStatus();
         this.startAutoUpdate();
+
+        // Refresh immediately when the page becomes visible/focused
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                this.updateAllStatus();
+            }
+        });
+        window.addEventListener('focus', () => {
+            this.updateAllStatus();
+        });
     }
     
     setupEventListeners() {
@@ -472,12 +482,23 @@ class PrintFarmDashboard {
                     
                     if (action === 'movement') {
                         this.showMovementModal(printerName);
+                    } else if (action === 'macros') {
+                        this.showMacrosModal(printerName);
                     } else {
                         this.showControlModal(printerName, action);
                     }
                 });
             });
-            
+
+            // Macros are Klipper-only; reveal the button for Klipper printers
+            const macrosBtn = card.querySelector('.macros-btn');
+            if (macrosBtn) {
+                const ptype = (printer.config.type || 'klipper').toLowerCase();
+                if (ptype === 'klipper' || ptype === 'moonraker') {
+                    macrosBtn.style.display = 'inline-flex';
+                }
+            }
+
             grid.appendChild(card);
         }
     }
@@ -1429,7 +1450,168 @@ class PrintFarmDashboard {
             this.selectedDistance = 0.1;
         }
     }
-    
+
+    setupMacrosModal() {
+        if (this._macrosModalReady) return;
+        this._macrosModalReady = true;
+
+        const modal = document.getElementById('macros-modal');
+        if (!modal) return;
+
+        const close = () => { modal.style.display = 'none'; };
+        modal.querySelector('.macros-modal-close')?.addEventListener('click', close);
+        document.getElementById('macros-close')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+        document.getElementById('macros-refresh')?.addEventListener('click', () => {
+            if (this.currentMacrosPrinter) this.loadMacros(this.currentMacrosPrinter);
+        });
+
+        const filterInput = document.getElementById('macros-filter');
+        filterInput?.addEventListener('input', () => this.applyMacroFilter());
+
+        document.getElementById('macros-show-hidden')?.addEventListener('change', () => {
+            if (this.currentMacrosPrinter) this.loadMacros(this.currentMacrosPrinter);
+        });
+    }
+
+    showMacrosModal(printerName) {
+        this.setupMacrosModal();
+
+        const modal = document.getElementById('macros-modal');
+        const title = document.getElementById('macros-modal-title');
+        if (!modal || !title) return;
+
+        title.textContent = `${printerName} — Macros`;
+        this.currentMacrosPrinter = printerName;
+
+        const filterInput = document.getElementById('macros-filter');
+        if (filterInput) filterInput.value = '';
+
+        modal.style.display = 'flex';
+        this.loadMacros(printerName);
+    }
+
+    async loadMacros(printerName) {
+        const loadingEl = document.getElementById('macros-loading');
+        const errorEl   = document.getElementById('macros-error');
+        const errorTxt  = document.getElementById('macros-error-text');
+        const emptyEl   = document.getElementById('macros-empty');
+        const listEl    = document.getElementById('macros-list');
+        const showHidden = document.getElementById('macros-show-hidden')?.checked ? '1' : '0';
+
+        loadingEl.style.display = 'flex';
+        errorEl.style.display = 'none';
+        emptyEl.style.display = 'none';
+        listEl.style.display = 'none';
+        listEl.innerHTML = '';
+
+        try {
+            const resp = await fetch(`api/macros/${encodeURIComponent(printerName)}?include_hidden=${showHidden}`);
+            const data = await resp.json();
+            loadingEl.style.display = 'none';
+
+            if (!resp.ok || !data.success) {
+                errorTxt.textContent = data.error || `Failed to load macros (HTTP ${resp.status})`;
+                errorEl.style.display = 'flex';
+                return;
+            }
+
+            const macros = data.macros || [];
+            if (macros.length === 0) {
+                emptyEl.style.display = 'flex';
+                return;
+            }
+
+            this._currentMacros = macros;
+            this.renderMacros(macros);
+            listEl.style.display = 'grid';
+            this.applyMacroFilter();
+        } catch (err) {
+            loadingEl.style.display = 'none';
+            errorTxt.textContent = err.message || 'Network error';
+            errorEl.style.display = 'flex';
+        }
+    }
+
+    renderMacros(macros) {
+        const listEl = document.getElementById('macros-list');
+        listEl.innerHTML = '';
+        for (const macro of macros) {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'macro-item';
+            item.dataset.macroName = macro.name.toLowerCase();
+            item.dataset.macroDesc = (macro.description || '').toLowerCase();
+
+            const name = document.createElement('span');
+            name.className = 'macro-name';
+            name.textContent = macro.name;
+
+            const desc = document.createElement('span');
+            desc.className = 'macro-desc';
+            desc.textContent = macro.description || '';
+
+            item.appendChild(name);
+            if (macro.description) item.appendChild(desc);
+
+            item.addEventListener('click', () => this.runMacro(macro.name, item));
+            listEl.appendChild(item);
+        }
+    }
+
+    applyMacroFilter() {
+        const q = (document.getElementById('macros-filter')?.value || '').trim().toLowerCase();
+        const items = document.querySelectorAll('#macros-list .macro-item');
+        let shown = 0;
+        items.forEach(el => {
+            const match = !q || el.dataset.macroName.includes(q) || el.dataset.macroDesc.includes(q);
+            el.style.display = match ? 'flex' : 'none';
+            if (match) shown++;
+        });
+        const emptyEl = document.getElementById('macros-empty');
+        if (q && shown === 0) {
+            emptyEl.querySelector('p').textContent = `No macros match "${q}".`;
+            emptyEl.style.display = 'flex';
+        } else if (q) {
+            emptyEl.style.display = 'none';
+            emptyEl.querySelector('p').textContent = 'No macros found on this printer.';
+        }
+    }
+
+    async runMacro(macroName, buttonEl) {
+        if (!this.currentMacrosPrinter) return;
+        if (buttonEl?.classList.contains('is-running')) return;
+
+        if (buttonEl) {
+            buttonEl.classList.add('is-running');
+            buttonEl.disabled = true;
+        }
+
+        try {
+            const resp = await fetch(`api/macros/${encodeURIComponent(this.currentMacrosPrinter)}/run`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ macro: macroName })
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || !data.success) {
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
+            this.showNotification?.(`Ran ${macroName}`, 'success');
+        } catch (err) {
+            console.error('Macro run failed:', err);
+            this.showNotification?.(`${macroName} failed: ${err.message}`, 'error');
+        } finally {
+            if (buttonEl) {
+                setTimeout(() => {
+                    buttonEl.classList.remove('is-running');
+                    buttonEl.disabled = false;
+                }, 400);
+            }
+        }
+    }
+
     async performHomeAction(axes) {
         if (!this.currentMovementPrinter) return;
         

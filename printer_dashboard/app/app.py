@@ -234,6 +234,58 @@ class KlipperAPI(PrinterAPI):
             logger.error(f"{self.name} G-code command failed: {e}")
             return None
 
+    def get_macros(self, include_hidden=False):
+        """Return list of available gcode_macro names with optional descriptions.
+
+        Moonraker exposes macros as `gcode_macro <NAME>` entries in
+        /printer/objects/list. Descriptions live in /printer/gcode/help.
+        Macros starting with `_` are conventionally hidden helpers; filter
+        them out unless include_hidden is True.
+        """
+        try:
+            objects_list = self._make_request('printer/objects/list')
+            if not objects_list or 'result' not in objects_list:
+                return []
+
+            available_objects = objects_list.get('result', {}).get('objects', [])
+            macro_names = []
+            for obj in available_objects:
+                if isinstance(obj, str) and obj.startswith('gcode_macro '):
+                    name = obj[len('gcode_macro '):].strip()
+                    if not name:
+                        continue
+                    if not include_hidden and name.startswith('_'):
+                        continue
+                    macro_names.append(name)
+
+            # Best-effort description lookup
+            descriptions = {}
+            help_resp = self._make_request('printer/gcode/help')
+            if help_resp and 'result' in help_resp:
+                help_map = help_resp.get('result', {}) or {}
+                # Keys in help are case-sensitive command names
+                for cmd, desc in help_map.items():
+                    descriptions[cmd.upper()] = desc
+
+            macros = []
+            for name in sorted(macro_names, key=str.upper):
+                macros.append({
+                    'name': name,
+                    'description': descriptions.get(name.upper(), '')
+                })
+            return macros
+        except Exception as e:
+            logger.error(f"{self.name} failed to get macros: {e}")
+            return []
+
+    def run_macro(self, macro_name):
+        """Run a gcode_macro by name (sends it as a gcode script)."""
+        if not macro_name or not isinstance(macro_name, str):
+            return None
+        # Defensive: macros are bare identifiers, no spaces or newlines
+        safe = macro_name.strip().split()[0]
+        return self._send_gcode(safe, timeout=30)
+
     def get_status(self):
         """Get comprehensive printer status"""
         try:
@@ -345,7 +397,20 @@ class KlipperAPI(PrinterAPI):
                 state = direct_print_stats.get('state', 'ready')
             else:
                 state = print_stats.get('state', 'ready')
-            
+
+            # Klippy host state takes precedence over print_stats: when the firmware is
+            # in shutdown/error/disconnect, print_stats may still report the last
+            # known print state ('standby', 'ready', etc.) which is misleading.
+            klippy_state = (webhooks.get('state') or '').lower()
+            klippy_message = webhooks.get('state_message', '') or ''
+            firmware_error = None
+            if klippy_state and klippy_state != 'ready':
+                if klippy_state in ('shutdown', 'error', 'disconnect', 'disconnected'):
+                    state = 'error'
+                    firmware_error = klippy_message or f'Klipper firmware {klippy_state}'
+                elif klippy_state == 'startup':
+                    state = 'startup'
+
             # Store chamber sensor types for temperature setting
             self.chamber_sensor_types = chamber_sensor_types
             
@@ -390,11 +455,15 @@ class KlipperAPI(PrinterAPI):
                 'klippy_state': webhooks.get('state', 'unknown'),
                 'queue_status': job_queue.get('result', {}).get('queued_jobs', []) if job_queue else []
             }
-            
+
             # Add chamber temperatures if any were found
             if chamber_temps:
                 result['chamber_temps'] = chamber_temps
-                
+
+            # Surface a firmware-shutdown / disconnect message so the UI can display it
+            if firmware_error:
+                result['error'] = firmware_error
+
             return result
             
         except Exception as e:
@@ -1587,6 +1656,55 @@ def set_printer_temperature(printer_name):
     except Exception as e:
         logger.error(f"Error setting temperature: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/macros/<printer_name>', methods=['GET'])
+def get_printer_macros(printer_name):
+    """List Klipper gcode_macros for a printer."""
+    try:
+        if printer_name not in printer_manager.printers:
+            return jsonify({'success': False, 'error': 'Printer not found'}), 404
+
+        printer = printer_manager.printers[printer_name]
+        if not hasattr(printer, 'get_macros'):
+            return jsonify({
+                'success': False,
+                'error': 'Macros are only supported on Klipper/Moonraker printers',
+                'macros': []
+            }), 400
+
+        include_hidden = request.args.get('include_hidden', '0') in ('1', 'true', 'yes')
+        macros = printer.get_macros(include_hidden=include_hidden)
+        return jsonify({'success': True, 'macros': macros})
+    except Exception as e:
+        logger.error(f"Error getting macros for {printer_name}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/macros/<printer_name>/run', methods=['POST'])
+def run_printer_macro(printer_name):
+    """Run a Klipper gcode_macro by name."""
+    try:
+        if printer_name not in printer_manager.printers:
+            return jsonify({'success': False, 'error': 'Printer not found'}), 404
+
+        data = request.get_json(silent=True) or {}
+        macro_name = (data.get('macro') or '').strip()
+        if not macro_name:
+            return jsonify({'success': False, 'error': 'Missing macro name'}), 400
+
+        printer = printer_manager.printers[printer_name]
+        if not hasattr(printer, 'run_macro'):
+            return jsonify({'success': False, 'error': 'Macros not supported for this printer'}), 400
+
+        logger.info(f"Running macro on {printer_name}: {macro_name}")
+        result = printer.run_macro(macro_name)
+        if result is None:
+            return jsonify({'success': False, 'error': 'Macro execution failed'}), 500
+        return jsonify({'success': True, 'result': result})
+    except Exception as e:
+        logger.error(f"Error running macro on {printer_name}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/temperature-presets')
 def get_temperature_presets():
