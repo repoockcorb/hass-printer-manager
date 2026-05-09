@@ -1390,6 +1390,46 @@ class HomeAssistantAPI:
             logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
+    def fetch_camera_image(self, entity_id):
+        """Fetch the camera image bytes via the supervisor proxy.
+
+        Newer Home Assistant versions reject cross-origin access to
+        /api/camera_proxy with the short-lived entity_picture token, so we
+        fetch the image server-side using the supervisor bearer token and
+        stream the bytes back to the browser.
+        """
+        try:
+            entity_state = self._make_request(f'states/{entity_id}')
+            if not entity_state:
+                logger.error(f"No entity state returned for {entity_id}")
+                return None, None
+
+            entity_picture = entity_state.get('attributes', {}).get('entity_picture', '')
+            if not entity_picture:
+                logger.error(f"No entity_picture found for {entity_id}")
+                return None, None
+
+            # entity_picture is typically a path like
+            # /api/camera_proxy/camera.foo?token=...&authSig=...
+            # Strip the leading /api/ since _make_request adds it, but we
+            # actually need the raw path with query string preserved.
+            if entity_picture.startswith('http://') or entity_picture.startswith('https://'):
+                url = entity_picture
+            else:
+                url = f"{self.internal_url}{entity_picture}"
+
+            headers = {
+                'Authorization': f'Bearer {self.token}',
+                'Cache-Control': 'no-cache',
+            }
+            response = requests.get(url, headers=headers, timeout=15, stream=False)
+            response.raise_for_status()
+            content_type = response.headers.get('Content-Type', 'image/jpeg')
+            return response.content, content_type
+        except Exception as e:
+            logger.error(f"Error fetching camera image for {entity_id}: {e}")
+            return None, None
+
     def get_camera_stream_url(self, entity_id, base_url=None):
         """Get camera stream URL for entity"""
         try:
@@ -1902,6 +1942,31 @@ def get_camera_snapshot(printer_name):
         logger.error(f"Error getting camera snapshot for {printer_name}: {e}")
         import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/camera/<printer_name>/proxy')
+def proxy_camera_image(printer_name):
+    """Stream the camera image bytes through the addon (works on HA 2024+)."""
+    try:
+        printers = storage.get_printers()
+        printer_config = next((p for p in printers if p['name'] == printer_name), None)
+        if not printer_config:
+            return jsonify({'error': 'Printer not found'}), 404
+
+        camera_entity = printer_config.get('camera_entity')
+        if not camera_entity:
+            return jsonify({'error': 'No camera entity configured for this printer'}), 404
+
+        image_bytes, content_type = ha_api.fetch_camera_image(camera_entity)
+        if not image_bytes:
+            return jsonify({'error': 'Camera image not available'}), 502
+
+        resp = Response(image_bytes, mimetype=content_type or 'image/jpeg')
+        resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        resp.headers['Pragma'] = 'no-cache'
+        return resp
+    except Exception as e:
+        logger.error(f"Error proxying camera image for {printer_name}: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/test-gcode/<printer_name>', methods=['POST'])

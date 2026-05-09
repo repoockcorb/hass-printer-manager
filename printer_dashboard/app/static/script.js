@@ -1255,53 +1255,30 @@ class PrintFarmDashboard {
         const error = document.getElementById('camera-error');
         
         try {
-            // Get the dynamic base URL using our smart detection
-            const baseUrl = await this.getDynamicBaseUrl();
-            
-            // Get fresh snapshot URL with dynamic base_url
+            // Route the image through our addon proxy so it works regardless
+            // of HA version, ingress context, Nabu Casa, or mobile app — the
+            // direct camera_proxy URL is no longer reliable cross-origin on
+            // recent HA releases.
             const timestamp = Date.now();
-            const snapshotResponse = await fetch(`api/camera/${this.currentCameraPrinter}/snapshot?base_url=${encodeURIComponent(baseUrl)}&_=${timestamp}`);
-            
-            if (!snapshotResponse.ok) {
-                throw new Error(`API request failed: ${snapshotResponse.status} ${snapshotResponse.statusText}`);
-            }
-            
-            const snapshotData = await snapshotResponse.json();
-            
-            console.log('API Response:', snapshotData); // Debug log
-            console.log('Using base URL:', baseUrl); // Debug log
-            
-            if (snapshotData.snapshot_url) {
-                // Add timestamp to the snapshot URL to prevent caching
-                const imageUrl = new URL(snapshotData.snapshot_url);
-                imageUrl.searchParams.set('_', timestamp);
-                
-                console.log('Loading image from URL:', imageUrl.toString()); // Debug log
-                
-                stream.onload = () => {
-                    loading.style.display = 'none';
-                    stream.style.display = 'block';
-                    error.style.display = 'none';
-                    console.log('✅ Camera image loaded successfully at:', new Date().toLocaleTimeString()); // Debug log
-                };
-                
-                stream.onerror = (e) => {
-                    loading.style.display = 'none';
-                    error.style.display = 'flex';
-                    error.querySelector('p').textContent = 'Failed to load camera image';
-                    console.error('❌ Camera image failed to load:', e); // Debug log
-                    console.error('Failed URL:', imageUrl.toString()); // Debug log
-                    console.error('Current time:', new Date().toLocaleTimeString());
-                };
-                
-                // Set the image source with the timestamped URL
-                stream.src = imageUrl.toString();
-                
-                // Start auto-refresh to get fresh images
-                this.startCameraRefresh();
-            } else {
-                throw new Error(snapshotData.error || 'No snapshot_url in response');
-            }
+            const imageUrl = new URL(`api/camera/${this.currentCameraPrinter}/proxy`, window.location.href);
+            imageUrl.searchParams.set('_', timestamp);
+
+            stream.onload = () => {
+                loading.style.display = 'none';
+                stream.style.display = 'block';
+                error.style.display = 'none';
+            };
+
+            stream.onerror = (e) => {
+                loading.style.display = 'none';
+                error.style.display = 'flex';
+                error.querySelector('p').textContent = 'Failed to load camera image';
+                console.error('❌ Camera image failed to load:', e);
+                console.error('Failed URL:', imageUrl.toString());
+            };
+
+            stream.src = imageUrl.toString();
+            this.startCameraRefresh();
         } catch (err) {
             console.error('Error loading camera feed:', err);
             loading.style.display = 'none';
