@@ -157,7 +157,7 @@
                 <div class="progress-section">
                     <div class="print-info">
                         <div class="file-name"></div>
-                        <img class="print-thumbnail" src="" alt="Print thumbnail" style="display:none; max-width:100%; border-radius:8px; margin:0.5rem 0;" />
+                        <img class="print-thumbnail" src="" alt="Print thumbnail" style="display:none;" />
                         <div class="print-progress">
                             <div class="progress-bar">
                                 <div class="progress-fill"></div>
@@ -418,16 +418,16 @@
                     <select id="printer-select"></select>
                 </div>
 
-                <div id="upload-progress" style="margin-top:1rem; display:none;">Uploading...</div>
-                <div id="upload-error" style="color:#f87171; margin-top:0.5rem; display:none;"></div>
+                <div id="upload-progress" class="upload-progress" style="display:none;">Uploading...</div>
+                <div id="upload-error" class="upload-error" style="display:none;"></div>
 
-                <hr style="margin:1.5rem 0; border:none; border-top:1px solid rgba(148,163,184,0.3);" />
+                <hr class="modal-divider" />
 
-                <div class="list-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+                <div class="list-header">
                     <span>Available Files</span>
-                    <span id="file-count" class="file-count" style="color:#94a3b8;"></span>
+                    <span id="file-count" class="file-count"></span>
                 </div>
-                <div id="file-list-container" style="max-height:250px; overflow-y:auto;"></div>
+                <div id="file-list-container"></div>
             </div>
             <div class="modal-footer">
                 <button id="upload-confirm" class="btn btn-primary">Upload</button>
@@ -462,11 +462,10 @@
             </div>
             <div class="modal-body">
                 <div class="print-preview">
-                    <img id="print-thumbnail" src="" alt="Print preview" 
-                         style="width: 100%; height: auto; border-radius: 8px; margin-bottom: 1rem; background: rgba(15, 23, 42, 0.3);">
+                    <img id="print-thumbnail" src="" alt="Print preview">
                     <div class="print-details">
-                        <p>File: <span id="print-filename" style="color: #e0e6ed;"></span></p>
-                        <p>Printer: <span id="print-printer" style="color: #e0e6ed;"></span></p>
+                        <p>File <span id="print-filename"></span></p>
+                        <p>Printer <span id="print-printer"></span></p>
                     </div>
                 </div>
             </div>
@@ -487,9 +486,9 @@
             <div class="modal-body">
                 <div class="temp-control-form">
                     <div class="temp-info">
-                        <p>Heater: <span id="temp-heater-name" style="color: #e0e6ed;"></span></p>
-                        <p>Current: <span id="temp-current" style="color: #e0e6ed;">0°C</span></p>
-                        <p>Target: <span id="temp-target" style="color: #e0e6ed;">0°C</span></p>
+                        <p>Heater <span id="temp-heater-name"></span></p>
+                        <p>Current <span id="temp-current">0°C</span></p>
+                        <p>Target <span id="temp-target">0°C</span></p>
                     </div>
                     <div class="temp-input-group">
                         <label for="temp-input">New Target Temperature (°C):</label>
