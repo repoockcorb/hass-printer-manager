@@ -484,6 +484,8 @@ class PrintFarmDashboard {
                         this.showMovementModal(printerName);
                     } else if (action === 'macros') {
                         this.showMacrosModal(printerName);
+                    } else if (action === 'webui') {
+                        this.showWebUIModal(printerName);
                     } else {
                         this.showControlModal(printerName, action);
                     }
@@ -497,6 +499,12 @@ class PrintFarmDashboard {
                 if (ptype === 'klipper' || ptype === 'moonraker') {
                     macrosBtn.style.display = 'inline-flex';
                 }
+            }
+
+            // Web UI button — show whenever we have a URL to open
+            const webuiBtn = card.querySelector('.webui-btn');
+            if (webuiBtn && this.getWebUIUrl(printer.config)) {
+                webuiBtn.style.display = 'inline-flex';
             }
 
             grid.appendChild(card);
@@ -1448,6 +1456,108 @@ class PrintFarmDashboard {
         if (defaultButton) {
             defaultButton.classList.add('active');
             this.selectedDistance = 0.1;
+        }
+    }
+
+    getWebUIUrl(config) {
+        if (!config) return null;
+        // Allow an explicit override; otherwise use the printer's base url.
+        // For Klipper this is typically the Mainsail/Fluidd host; for OctoPrint
+        // it's the OctoPrint root URL.
+        const raw = (config.web_url || config.ui_url || config.url || '').trim();
+        if (!raw) return null;
+        try {
+            // Normalise: ensure scheme present
+            const url = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+            return url.replace(/\/+$/, '');
+        } catch (_) {
+            return null;
+        }
+    }
+
+    setupWebUIModal() {
+        if (this._webuiModalReady) return;
+        this._webuiModalReady = true;
+
+        const modal = document.getElementById('webui-modal');
+        if (!modal) return;
+
+        const close = () => this.closeWebUIModal();
+        modal.querySelector('.webui-modal-close')?.addEventListener('click', close);
+        modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+        // ESC closes when modal is open
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.style.display === 'flex') close();
+        });
+    }
+
+    showWebUIModal(printerName) {
+        this.setupWebUIModal();
+
+        const printer = this.printers.get(printerName);
+        if (!printer) return;
+        const url = this.getWebUIUrl(printer.config);
+        if (!url) {
+            this.showNotification?.(`No web UI URL configured for ${printerName}`, 'warning');
+            return;
+        }
+
+        const modal = document.getElementById('webui-modal');
+        const title = document.getElementById('webui-modal-title');
+        const frame = document.getElementById('webui-frame');
+        const fallback = document.getElementById('webui-fallback');
+        const openTab = document.getElementById('webui-open-tab');
+        const fallbackLink = document.getElementById('webui-fallback-link');
+
+        const ptype = (printer.config.type || 'klipper').toLowerCase();
+        const friendly = ptype === 'octoprint' ? 'OctoPrint' : 'Mainsail';
+        title.textContent = `${printerName} — ${friendly}`;
+
+        openTab.href = url;
+        fallbackLink.href = url;
+
+        // Mixed-content guard: an HTTPS dashboard cannot iframe an HTTP URL.
+        const dashHttps = window.location.protocol === 'https:';
+        const targetHttp = url.toLowerCase().startsWith('http://');
+        if (dashHttps && targetHttp) {
+            frame.style.display = 'none';
+            frame.src = 'about:blank';
+            fallback.style.display = 'flex';
+        } else {
+            fallback.style.display = 'none';
+            frame.style.display = 'block';
+            // Detect frame load failure (X-Frame-Options / CSP frame-ancestors).
+            // The load event fires for both success and "blocked by browser",
+            // so we use a timer + a heuristic: if the frame's contentDocument
+            // is inaccessible AND no load event fired within ~6s, show fallback.
+            this._webuiLoadTimer && clearTimeout(this._webuiLoadTimer);
+            this._webuiLoaded = false;
+            frame.onload = () => { this._webuiLoaded = true; };
+            this._webuiLoadTimer = setTimeout(() => {
+                if (!this._webuiLoaded) {
+                    frame.style.display = 'none';
+                    fallback.style.display = 'flex';
+                }
+            }, 6000);
+            frame.src = url;
+        }
+
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    closeWebUIModal() {
+        const modal = document.getElementById('webui-modal');
+        const frame = document.getElementById('webui-frame');
+        if (!modal) return;
+        modal.style.display = 'none';
+        document.body.style.overflow = '';
+        // Stop the iframe from running in the background
+        if (frame) frame.src = 'about:blank';
+        if (this._webuiLoadTimer) {
+            clearTimeout(this._webuiLoadTimer);
+            this._webuiLoadTimer = null;
         }
     }
 

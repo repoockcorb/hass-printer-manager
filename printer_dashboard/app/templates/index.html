@@ -248,6 +248,10 @@
                         <i class="fas fa-bolt"></i>
                         Macros
                     </button>
+                    <button class="btn btn-control btn-webui webui-btn" data-action="webui" style="display: none;" title="Open printer web UI">
+                        <i class="fas fa-external-link-alt"></i>
+                        Web UI
+                    </button>
                 </div>
                 <div class="last-update">
                     Updated: <span class="update-time">Never</span>
@@ -381,6 +385,34 @@
             </div>
             <div class="modal-footer">
                 <button id="movement-close" class="btn btn-primary">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Web UI Modal (embedded Mainsail / OctoPrint) -->
+    <div id="webui-modal" class="modal webui-modal" style="display: none;">
+        <div class="modal-content webui-modal-content">
+            <div class="modal-header">
+                <h3 id="webui-modal-title">Printer Web UI</h3>
+                <div class="webui-actions">
+                    <a id="webui-open-tab" class="btn btn-secondary" href="#" target="_blank" rel="noopener noreferrer" title="Open in new tab">
+                        <i class="fas fa-up-right-from-square"></i>
+                        New tab
+                    </a>
+                    <button class="modal-close webui-modal-close" aria-label="Close">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body webui-modal-body">
+                <iframe id="webui-frame" src="about:blank" allow="fullscreen" referrerpolicy="no-referrer"></iframe>
+                <div id="webui-fallback" class="webui-fallback" style="display:none;">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <h4>Can't embed this printer's web UI</h4>
+                    <p>The printer's interface refused to load in a frame. This usually happens when the printer is on plain HTTP while Home Assistant is on HTTPS, or when its server blocks iframe embedding.</p>
+                    <a id="webui-fallback-link" class="btn btn-primary" href="#" target="_blank" rel="noopener noreferrer">
+                        <i class="fas fa-up-right-from-square"></i>
+                        Open in new tab
+                    </a>
+                </div>
             </div>
         </div>
     </div>
